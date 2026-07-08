@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0d10">
+  <title>Tuner</title>
+
+  <!-- Installable PWA (Add to Home Screen → launches full-screen) -->
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32.png">
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Tuner">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./css/styles.css">
+</head>
+<body>
+  <main class="app" id="app">
+    <!-- Header -->
+    <header class="hdr">
+      <button class="hdr-auto" id="autoBtn" type="button" title="Auto note detection">
+        <span class="dot" id="autoDot"></span>
+        <span class="hdr-auto-label" id="autoLabel">AUTO</span>
+      </button>
+      <button class="chip" id="a4Btn" type="button" title="Reference pitch">A = <span id="a4Val">440</span></button>
+    </header>
+
+    <div class="spacer"></div>
+
+    <!-- Stage: pitch trail (background) + note + cents dial (ring) -->
+    <section class="stage" id="stage">
+      <canvas class="trail" id="trail" aria-hidden="true"></canvas>
+      <div class="note" id="noteBlock">
+        <div class="note-state" id="stateLabel"></div>
+        <div class="dial-wrap">
+          <svg class="dial" id="dial" viewBox="0 0 300 300" aria-hidden="true">
+            <path id="dialTrack" class="dial-track" d="M 56.72 243.28 A 132 132 0 1 1 243.28 243.28" />
+            <path id="dialZone" class="dial-zone" d="M 119.16 21.55 A 132 132 0 0 1 180.84 21.55" />
+            <g id="dialTicks" class="dial-ticks"></g>
+            <path id="dialProgress" class="dial-progress" d="" />
+            <circle id="dialIndicator" class="dial-indicator" cx="150" cy="18" r="7" />
+          </svg>
+          <div class="note-main" id="noteMain">
+            <span class="note-name" id="noteName"></span>
+            <span class="note-oct" id="noteOct"></span>
+          </div>
+        </div>
+        <div class="note-sub" id="noteSub">start the mic to tune</div>
+      </div>
+    </section>
+
+    <div class="spacer"></div>
+
+    <!-- String selector -->
+    <section class="strings" id="strings"><!-- circles injected --></section>
+    <button class="tuning-label" id="tuningBtn" type="button">
+      <span id="tuningName">Standard</span><span class="sep">·</span><span class="hint">tap to change ⌄</span>
+    </button>
+
+    <!-- Start overlay -->
+    <div class="overlay" id="overlay">
+      <div class="overlay-card">
+        <div class="overlay-title">Tuner</div>
+        <div class="overlay-sub" id="overlaySub">Guitar &amp; bass · precise &amp; steady · on‑device</div>
+        <button class="start-btn" id="startBtn" type="button">Tap to start listening</button>
+        <div class="overlay-note" id="overlayNote">Uses your microphone. Nothing leaves the device.</div>
+      </div>
+    </div>
+
+    <!-- Tuning / settings sheet -->
+    <div class="sheet-scrim" id="sheetScrim" hidden></div>
+    <div class="sheet" id="sheet" hidden role="dialog" aria-modal="true" aria-label="Tuning settings">
+      <div class="sheet-handle"></div>
+      <div id="sheetMain">
+        <div class="sheet-row">
+          <div class="seg" id="instrumentSeg">
+            <button class="seg-btn is-on" data-instrument="guitar" type="button">Guitar</button>
+            <button class="seg-btn" data-instrument="bass" type="button">Bass</button>
+          </div>
+          <button class="theme-toggle" id="themeBtn" type="button" title="Light / dark">◑</button>
+        </div>
+        <div class="sheet-section-title">Tuning</div>
+        <div class="tuning-list" id="tuningList"><!-- injected --></div>
+        <div class="sheet-section-title">Reference A4</div>
+        <div class="a4-row">
+          <button class="a4-step" id="a4Down" type="button">−</button>
+          <div class="a4-display"><span id="a4Big">440</span> Hz</div>
+          <button class="a4-step" id="a4Up" type="button">+</button>
+        </div>
+        <button class="sheet-done" id="sheetDone" type="button">Done</button>
+      </div>
+      <div id="sheetEditor" hidden><!-- custom tuning editor injected --></div>
+    </div>
+  </main>
+
+  <script>
+    // Register the service worker (network-first: always fresh online, works offline).
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
+    }
+  </script>
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>
