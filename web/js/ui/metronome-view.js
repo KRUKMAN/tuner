@@ -64,6 +64,7 @@ export class MetronomeView {
   setRunning(on) {
     this.startBtn.textContent = on ? 'Stop' : 'Start';
     this.startBtn.classList.toggle('is-on', !!on);
+    this.startBtn.setAttribute('aria-pressed', String(!!on));
     if (!on) this.highlightBeat(-1);
   }
 
@@ -97,6 +98,7 @@ export class MetronomeView {
     this._editorOpen = !this._editorOpen;
     this.editorEl.hidden = !this._editorOpen;
     this.editBtn.classList.toggle('is-on', this._editorOpen);
+    this.editBtn.setAttribute('aria-expanded', String(this._editorOpen));
     if (this._editorOpen) this._renderEditor();
   }
 
@@ -128,12 +130,14 @@ export class MetronomeView {
     countRow.className = 'met-count';
     const minus = doc.createElement('button');
     minus.type = 'button'; minus.className = 'met-step'; minus.textContent = '−';
+    minus.setAttribute('aria-label', 'Fewer beats');
     minus.addEventListener('click', () => this._setBeatCount(this._bar.length - 1));
     const label = doc.createElement('span');
     label.className = 'met-count-label';
     label.textContent = `${this._bar.length} beats`;
     const plus = doc.createElement('button');
     plus.type = 'button'; plus.className = 'met-step'; plus.textContent = '+';
+    plus.setAttribute('aria-label', 'More beats');
     plus.addEventListener('click', () => this._setBeatCount(this._bar.length + 1));
     countRow.appendChild(minus); countRow.appendChild(label); countRow.appendChild(plus);
     ed.appendChild(countRow);
@@ -150,6 +154,7 @@ export class MetronomeView {
       pill.className = 'met-pill met-editpill ' + (ACCENT_CLASS[beat.accent] || 'is-normal');
       pill.textContent = String(i + 1);
       pill.title = 'Tap to cycle accent';
+      pill.setAttribute('aria-label', `Beat ${i + 1}: ${beat.accent} accent. Tap to cycle.`);
       pill.addEventListener('click', () => {
         beat.accent = cycleAccent(beat.accent);
         this._renderPills();
@@ -162,6 +167,7 @@ export class MetronomeView {
       sub.className = 'met-subbtn';
       sub.textContent = '×' + (beat.subdivision || 1);
       sub.title = 'Tap to cycle subdivision';
+      sub.setAttribute('aria-label', `Beat ${i + 1} subdivision: times ${beat.subdivision || 1}. Tap to cycle.`);
       sub.addEventListener('click', () => {
         const subs = CONFIG.metronome.subdivisions;
         const idx = subs.indexOf(beat.subdivision || 1);

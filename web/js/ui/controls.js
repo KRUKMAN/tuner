@@ -42,6 +42,7 @@ export class Controls {
     this.noteName = this.$('noteName');
     this.noteOct = this.$('noteOct');
     this.noteSub = this.$('noteSub');
+    this.autoBtn = this.$('autoBtn');
     this.autoDot = this.$('autoDot');
     this.autoLabel = this.$('autoLabel');
     this.stringsEl = this.$('strings');
@@ -100,7 +101,7 @@ export class Controls {
   _wire() {
     const cb = this.cb;
     this.$('startBtn').addEventListener('click', () => cb.onMicStart());
-    this.$('autoBtn').addEventListener('click', () => {
+    this.autoBtn.addEventListener('click', () => {
       // Mic idle: start it (unchanged). Mic running: this doubles as PINNED→AUTO (unpin).
       if (this._micRunning) cb.onAuto();
       else cb.onMicStart();
@@ -224,6 +225,8 @@ export class Controls {
       btn.className = 'str';
       btn.textContent = info.name[0];
       btn.title = `${info.name}${info.octave} · ${frequencyFromMidi(midi, a4).toFixed(2)} Hz — tap to pin`;
+      btn.setAttribute('aria-pressed', 'false');
+      btn.setAttribute('aria-label', `${info.name}${info.octave}, tap to pin pitch detection to this string`);
       btn.addEventListener('click', () => {
         this.cb.onStringSelect(i);
       });
@@ -267,20 +270,31 @@ export class Controls {
 
   _applyPinnedState() {
     const kids = this.stringsEl.children;
-    for (let i = 0; i < kids.length; i++) kids[i].classList.toggle('is-pinned', i === this._pinnedIndex);
+    for (let i = 0; i < kids.length; i++) {
+      const pinned = i === this._pinnedIndex;
+      kids[i].classList.toggle('is-pinned', pinned);
+      kids[i].setAttribute('aria-pressed', String(pinned));
+    }
     this.autoLabel.textContent = this._pinnedIndex != null ? 'PINNED' : 'AUTO';
+    if (this._pinnedIndex != null && this._tuning) {
+      const info = midiToName(this._tuning.strings[this._pinnedIndex]);
+      this.autoBtn.setAttribute('aria-label', `Pinned to ${info.name}${info.octave}. Tap to return to automatic string detection.`);
+    } else {
+      this.autoBtn.setAttribute('aria-label', 'Automatic string detection is on. Tap a string to pin detection to it.');
+    }
   }
 
   /** Tone button target is the pinned string, else the auto-detected one. */
   _syncToneBtn() {
     const target = this._pinnedIndex != null ? this._pinnedIndex : this._activeIndex;
     this.toneBtn.disabled = target == null;
+    let label = 'Play reference tone';
     if (target != null && this._tuning) {
       const info = midiToName(this._tuning.strings[target]);
-      this.toneBtn.title = `Play ${info.name}${info.octave} reference tone`;
-    } else {
-      this.toneBtn.title = 'Play reference tone';
+      label = `Play ${info.name}${info.octave} reference tone`;
     }
+    this.toneBtn.title = label;
+    this.toneBtn.setAttribute('aria-label', label);
   }
 
   /* ---------- tuning list + customs ---------- */
@@ -311,6 +325,7 @@ export class Controls {
         edit.className = 'tuning-edit';
         edit.textContent = '✎';
         edit.title = 'Edit tuning';
+        edit.setAttribute('aria-label', `Edit ${t.name} tuning`);
         edit.addEventListener('click', (e) => { e.stopPropagation(); this._openEditor(t.strings.slice(), t.id, t.name); });
         item.appendChild(edit);
         const del = doc.createElement('button');
@@ -318,6 +333,7 @@ export class Controls {
         del.className = 'tuning-del';
         del.textContent = '✕';
         del.title = 'Delete tuning';
+        del.setAttribute('aria-label', `Delete ${t.name} tuning`);
         del.addEventListener('click', (e) => { e.stopPropagation(); this.cb.onCustomDelete(t.id); });
         item.appendChild(del);
       }
@@ -382,21 +398,27 @@ export class Controls {
   /** @param {'dial'|'strobe'} mode */
   setDisplayModeUI(mode) {
     this.displaySeg.querySelectorAll('.seg-btn').forEach((b) => {
-      b.classList.toggle('is-on', b.dataset.display === mode);
+      const on = b.dataset.display === mode;
+      b.classList.toggle('is-on', on);
+      b.setAttribute('aria-pressed', String(on));
     });
   }
 
   /** @param {boolean} on */
   setHaptic(on) {
     this.hapticSeg.querySelectorAll('.seg-btn').forEach((b) => {
-      b.classList.toggle('is-on', (b.dataset.on === '1') === !!on);
+      const active = (b.dataset.on === '1') === !!on;
+      b.classList.toggle('is-on', active);
+      b.setAttribute('aria-pressed', String(active));
     });
   }
 
   /** @param {boolean} on */
   setChime(on) {
     this.chimeSeg.querySelectorAll('.seg-btn').forEach((b) => {
-      b.classList.toggle('is-on', (b.dataset.on === '1') === !!on);
+      const active = (b.dataset.on === '1') === !!on;
+      b.classList.toggle('is-on', active);
+      b.setAttribute('aria-pressed', String(active));
     });
   }
 
@@ -493,11 +515,13 @@ export class Controls {
     countRow.className = 'editor-count-row';
     this._countMinus = doc.createElement('button');
     this._countMinus.type = 'button'; this._countMinus.className = 'a4-step'; this._countMinus.textContent = '−';
+    this._countMinus.setAttribute('aria-label', 'Fewer strings');
     this._countMinus.addEventListener('click', () => this._stepCount(-1));
     this._countLabel = doc.createElement('span');
     this._countLabel.className = 'editor-count';
     this._countPlus = doc.createElement('button');
     this._countPlus.type = 'button'; this._countPlus.className = 'a4-step'; this._countPlus.textContent = '+';
+    this._countPlus.setAttribute('aria-label', 'More strings');
     this._countPlus.addEventListener('click', () => this._stepCount(+1));
     countRow.appendChild(this._countMinus);
     countRow.appendChild(this._countLabel);
@@ -547,10 +571,12 @@ export class Controls {
 
       const minus = doc.createElement('button');
       minus.type = 'button'; minus.className = 'a4-step'; minus.textContent = '−';
+      minus.setAttribute('aria-label', `Lower string ${i + 1} by a semitone`);
       minus.addEventListener('click', () => this._nudge(i, -1));
 
       const noteSel = doc.createElement('select');
       noteSel.className = 'editor-pick editor-note-sel';
+      noteSel.setAttribute('aria-label', `String ${i + 1} note`);
       for (let pc = 0; pc < 12; pc++) {
         const o = doc.createElement('option');
         o.value = String(pc); o.textContent = midiToName(pc).name;   // C, C#, D, … B
@@ -560,6 +586,7 @@ export class Controls {
 
       const octSel = doc.createElement('select');
       octSel.className = 'editor-pick editor-oct-sel';
+      octSel.setAttribute('aria-label', `String ${i + 1} octave`);
       for (let oct = 0; oct <= 5; oct++) {                            // A0..E5 span octaves 0..5
         const o = doc.createElement('option');
         o.value = String(oct); o.textContent = String(oct);
@@ -572,6 +599,7 @@ export class Controls {
 
       const plus = doc.createElement('button');
       plus.type = 'button'; plus.className = 'a4-step'; plus.textContent = '+';
+      plus.setAttribute('aria-label', `Raise string ${i + 1} by a semitone`);
       plus.addEventListener('click', () => this._nudge(i, +1));
 
       row.appendChild(minus);

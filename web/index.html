@@ -22,7 +22,7 @@
     <div id="liveRegion" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
     <!-- Header -->
     <header class="hdr">
-      <div class="mode-nav" id="modeNav" role="tablist" aria-label="Mode">
+      <div class="mode-nav" id="modeNav" role="group" aria-label="Mode">
         <button class="mode-btn is-on" id="navTuner" type="button" aria-pressed="true">Tuner</button>
         <button class="mode-btn" id="navMet" type="button" aria-pressed="false">Metronome</button>
       </div>
@@ -63,7 +63,7 @@
 
     <!-- String selector -->
     <section class="strings" id="strings"><!-- circles injected --></section>
-    <button class="tone-btn" id="toneBtn" type="button" title="Play reference tone" aria-pressed="false" disabled>
+    <button class="tone-btn" id="toneBtn" type="button" title="Play reference tone" aria-label="Play reference tone" aria-pressed="false" disabled>
       <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg>
     </button>
     <button class="tuning-label" id="tuningBtn" type="button">
@@ -78,14 +78,14 @@
         <button class="start-btn" id="startBtn" type="button">Tap to start listening</button>
         <div class="overlay-note">Needs your microphone to detect pitch. Audio is analyzed on this device and never leaves it.</div>
         <div class="overlay-status" id="overlayStatus" hidden></div>
-        <button class="retry-btn" id="retryBtn" type="button" hidden>Retry</button>
+        <button class="retry-btn" id="retryBtn" type="button" aria-label="Retry microphone access" hidden>Retry</button>
       </div>
     </div>
 
     <!-- Tuning / settings sheet -->
     <div class="sheet-scrim" id="sheetScrim" hidden></div>
     <div class="sheet" id="sheet" hidden tabindex="-1" role="dialog" aria-modal="true" aria-label="Tuning settings">
-      <div class="sheet-handle"></div>
+      <div class="sheet-handle" aria-hidden="true"></div>
       <div id="sheetMain">
         <div class="sheet-row">
           <div class="chip-row" id="instrumentSeg" role="tablist" aria-label="Instrument"><!-- instrument chips injected --></div>
@@ -95,28 +95,28 @@
         <div class="tuning-list" id="tuningList"><!-- injected --></div>
         <div class="sheet-section-title">Reference A4</div>
         <div class="a4-row">
-          <button class="a4-step" id="a4Down" type="button">−</button>
+          <button class="a4-step" id="a4Down" type="button" aria-label="Decrease reference pitch">−</button>
           <div class="a4-display"><span id="a4Big">440</span> Hz</div>
-          <button class="a4-step" id="a4Up" type="button">+</button>
+          <button class="a4-step" id="a4Up" type="button" aria-label="Increase reference pitch">+</button>
         </div>
         <div class="sheet-section-title">Display</div>
-        <div class="seg" id="displaySeg">
-          <button class="seg-btn is-on" data-display="dial" type="button">Dial</button>
-          <button class="seg-btn" data-display="strobe" type="button">Strobe</button>
+        <div class="seg" id="displaySeg" role="group" aria-label="Display style">
+          <button class="seg-btn is-on" data-display="dial" type="button" aria-pressed="true">Dial</button>
+          <button class="seg-btn" data-display="strobe" type="button" aria-pressed="false">Strobe</button>
         </div>
         <div class="sheet-section-title">In-tune feedback</div>
         <div class="sheet-row feedback-row">
           <span class="feedback-label">Haptic</span>
-          <div class="seg seg-sm" id="hapticSeg">
-            <button class="seg-btn is-on" data-on="1" type="button">On</button>
-            <button class="seg-btn" data-on="0" type="button">Off</button>
+          <div class="seg seg-sm" id="hapticSeg" role="group" aria-label="Haptic feedback">
+            <button class="seg-btn is-on" data-on="1" type="button" aria-pressed="true">On</button>
+            <button class="seg-btn" data-on="0" type="button" aria-pressed="false">Off</button>
           </div>
         </div>
         <div class="sheet-row feedback-row">
           <span class="feedback-label">Chime</span>
-          <div class="seg seg-sm" id="chimeSeg">
-            <button class="seg-btn" data-on="1" type="button">On</button>
-            <button class="seg-btn is-on" data-on="0" type="button">Off</button>
+          <div class="seg seg-sm" id="chimeSeg" role="group" aria-label="In-tune chime">
+            <button class="seg-btn" data-on="1" type="button" aria-pressed="false">On</button>
+            <button class="seg-btn is-on" data-on="0" type="button" aria-pressed="true">Off</button>
           </div>
         </div>
         <button class="sheet-done" id="sheetDone" type="button">Done</button>
@@ -133,11 +133,11 @@
           <div class="met-bpm"><span id="metBpm">120</span><span class="met-bpm-unit">BPM</span></div>
           <button class="met-step" id="metBpmUp" type="button" aria-label="Faster">+</button>
         </div>
-        <div class="met-pills" id="metPills"><!-- beat pills injected --></div>
+        <div class="met-pills" id="metPills" aria-hidden="true"><!-- beat pills injected --></div>
         <div class="met-actions">
-          <button class="met-tap" id="metTap" type="button">Tap</button>
-          <button class="met-start" id="metStart" type="button">Start</button>
-          <button class="met-edit" id="metEditBtn" type="button">Edit meter</button>
+          <button class="met-tap" id="metTap" type="button" aria-label="Tap tempo">Tap</button>
+          <button class="met-start" id="metStart" type="button" aria-pressed="false">Start</button>
+          <button class="met-edit" id="metEditBtn" type="button" aria-expanded="false" aria-controls="metEditor">Edit meter</button>
         </div>
         <div class="met-editor" id="metEditor" hidden><!-- editor injected --></div>
       </div>
