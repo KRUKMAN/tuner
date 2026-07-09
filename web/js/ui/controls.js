@@ -4,13 +4,14 @@
 
 import { midiToName, frequencyFromMidi } from '../music/theory.js';
 import { tuningsFor } from '../music/tunings.js';
+import { INSTRUMENTS } from '../music/instruments.js';
 
 export class Controls {
   /**
    * @param {Document} doc
    * @param {Object} cb
    * @param {() => void} cb.onMicStart
-   * @param {(instrument:'guitar'|'bass') => void} cb.onModeChange
+   * @param {(instrument:string) => void} cb.onModeChange
    * @param {(tuningId:string) => void} cb.onTuningChange
    * @param {(a4:number) => void} cb.onA4Change
    * @param {(index:number) => void} cb.onStringSelect Tap a string circle: pin/unpin detection to it.
@@ -58,6 +59,7 @@ export class Controls {
     this._editMidis = [];
     this._editId = null;
 
+    this._renderInstruments();
     this._wire();
   }
 
@@ -81,14 +83,6 @@ export class Controls {
     this.$('a4Btn').addEventListener('click', () => this.openSheet());
     this.$('sheetDone').addEventListener('click', () => this.closeSheet());
     this.scrim.addEventListener('click', () => this.closeSheet());
-
-    this.$('instrumentSeg').querySelectorAll('.seg-btn').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const inst = btn.dataset.instrument;
-        if (inst === this._instrument) return;
-        cb.onModeChange(inst);
-      });
-    });
 
     this.$('a4Down').addEventListener('click', () => cb.onA4Change(this._a4 - 1));
     this.$('a4Up').addEventListener('click', () => cb.onA4Change(this._a4 + 1));
@@ -285,11 +279,38 @@ export class Controls {
     this.tuningList.appendChild(add);
   }
 
+  /** Build the instrument selector chips from the registry (horizontally scrollable). */
+  _renderInstruments() {
+    const seg = this.$('instrumentSeg');
+    seg.innerHTML = '';
+    INSTRUMENTS.forEach((inst) => {
+      const b = this.doc.createElement('button');
+      b.type = 'button';
+      b.className = 'chip' + (inst.id === this._instrument ? ' is-on' : '');
+      b.dataset.instrument = inst.id;
+      b.textContent = inst.label;
+      b.setAttribute('role', 'tab');
+      b.setAttribute('aria-selected', inst.id === this._instrument ? 'true' : 'false');
+      b.addEventListener('click', () => {
+        if (inst.id === this._instrument) return;
+        this.cb.onModeChange(inst.id);
+      });
+      seg.appendChild(b);
+    });
+  }
+
   _setInstrumentUI(inst) {
     this._instrument = inst;
-    this.$('instrumentSeg').querySelectorAll('.seg-btn').forEach((b) => {
-      b.classList.toggle('is-on', b.dataset.instrument === inst);
+    const seg = this.$('instrumentSeg');
+    let active = null;
+    seg.querySelectorAll('.chip').forEach((b) => {
+      const on = b.dataset.instrument === inst;
+      b.classList.toggle('is-on', on);
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+      if (on) active = b;
     });
+    // Keep the active chip visible on a narrow phone: centre it within the scroll row.
+    if (active) seg.scrollLeft = active.offsetLeft - (seg.clientWidth - active.clientWidth) / 2;
     this._renderTuningList();
   }
   setInstrument(inst) { this._setInstrumentUI(inst); }

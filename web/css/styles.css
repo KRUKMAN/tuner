@@ -423,6 +423,36 @@ body {
   cursor: pointer;
 }
 .seg-btn.is-on { background: var(--accent); color: var(--bg-bot); font-weight: 600; }
+
+/* Package B: instrument selector — horizontally scrollable chip row */
+.chip-row {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 8px;
+  padding: 3px;
+  overflow-x: auto;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.chip-row::-webkit-scrollbar { display: none; }
+/* Scoped to .chip-row: the header A4 button already uses an unscoped .chip class
+   (9px radius, JetBrains Mono) — an unscoped rule here would collide and corrupt it. */
+.chip-row .chip {
+  flex: 0 0 auto;
+  border: 1px solid var(--surface-brd);
+  background: var(--surface);
+  color: var(--muted);
+  font: 500 14px 'Space Grotesk', sans-serif;
+  padding: 7px 15px;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+}
+.chip-row .chip.is-on { background: var(--accent); color: var(--bg-bot); border-color: transparent; font-weight: 600; }
+
 .theme-toggle {
   width: 40px; height: 40px;
   border-radius: 11px;
