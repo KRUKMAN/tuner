@@ -2,6 +2,7 @@
 // instantiates every module, owns the rAF loop and app state.
 
 import { CONFIG } from './config.js';
+import * as store from './store.js';
 import { MPMDetector } from './dsp/mpm.js';
 import { createPreFilter } from './dsp/filters.js';
 import { Stabilizer } from './dsp/stabilizer.js';
@@ -81,16 +82,22 @@ function cacheColors() {
 function pushGraphColors() {
   graph.setColors({ accent: accentColor, accentIn: accentInColor, grid: cssVar('--muted-2') || '#556' });
 }
+// Status-bar / theme-color per theme (matches --bg-bot in css/styles.css).
+const THEME_COLORS = { dark: '#0b0d10', light: '#efe9df' };
+function applyThemeColor(theme) {
+  const meta = document.getElementById('themeColorMeta');
+  if (meta) meta.setAttribute('content', THEME_COLORS[theme] || THEME_COLORS.dark);
+}
 function applyTheme(theme) {
   root.setAttribute('data-theme', theme);
-  try { localStorage.setItem('tuner-theme', theme); } catch { /* ignore */ }
+  store.set('tuner-theme', theme);
+  applyThemeColor(theme);
   cacheColors();
   pushGraphColors();
 }
 (() => {
-  let saved = null;
-  try { saved = localStorage.getItem('tuner-theme'); } catch { /* ignore */ }
-  if (saved) root.setAttribute('data-theme', saved);
+  const saved = store.get('tuner-theme', null);
+  if (saved) { root.setAttribute('data-theme', saved); applyThemeColor(saved); }
 })();
 
 /* ---------- restore persisted state ---------- */
