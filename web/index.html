@@ -21,6 +21,10 @@
   <main class="app" id="app">
     <!-- Header -->
     <header class="hdr">
+      <div class="mode-nav" id="modeNav" role="tablist" aria-label="Mode">
+        <button class="mode-btn is-on" id="navTuner" type="button" aria-pressed="true">Tuner</button>
+        <button class="mode-btn" id="navMet" type="button" aria-pressed="false">Metronome</button>
+      </div>
       <button class="hdr-auto" id="autoBtn" type="button" title="Auto note detection">
         <span class="dot" id="autoDot"></span>
         <span class="hdr-auto-label" id="autoLabel">AUTO</span>
@@ -28,6 +32,7 @@
       <button class="chip" id="a4Btn" type="button" title="Reference pitch">A = <span id="a4Val">440</span></button>
     </header>
 
+    <div id="tunerView">
     <div class="spacer"></div>
 
     <!-- Stage: pitch trail (background) + note + cents dial (ring) -->
@@ -116,6 +121,7 @@
         <button class="sheet-done" id="sheetDone" type="button">Done</button>
       </div>
       <div id="sheetEditor" hidden><!-- custom tuning editor injected --></div>
+    </div>
     </div>
 
     <!-- Metronome view (mutually exclusive with the tuner; toggled by app.js) -->

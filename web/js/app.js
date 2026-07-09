@@ -16,6 +16,9 @@ import { Dial } from './ui/dial.js';
 import { Strobe } from './ui/strobe.js';
 import { Graph } from './ui/graph.js';
 import { Controls } from './ui/controls.js';
+import { Metronome } from './audio/metronome.js';
+import { MetronomeView } from './ui/metronome-view.js';
+import { makeAdditiveBar, tapTempoBpm } from './music/meter.js';
 
 const LS_CUSTOM = 'tuner-custom-tunings';
 const LS_LAST = 'tuner-last-tuning';
@@ -35,6 +38,10 @@ const state = {
   chime: CONFIG.chimeDefaultOn,
   inTuneStreakStartMs: null,  // ms timestamp the current in-tune streak started, null when not in tune
   inTuneFired: false,         // true once feedback has fired for the current streak
+  uiMode: 'tuner',           // 'tuner' | 'metronome' — mutually exclusive
+  wasRunning: false,         // was the mic running when we left the tuner?
+  metBpm: CONFIG.metronome.bpmDefault,
+  metBar: makeAdditiveBar([4]),
 };
 
 /** @type {AudioContext} */ let audioCtx = null;
@@ -49,6 +56,9 @@ let procBuf = null;
 let analysisN = 0;
 let rafId = 0;
 let lastStringIndex = null;
+/** @type {Metronome} */ let metronome = null;
+let metRafId = 0;
+let tapTimes = [];
 
 const root = document.documentElement;
 
@@ -128,6 +138,19 @@ loadCustoms();
   const t = last && resolveTuning(last);
   if (t) { state.tuningId = t.id; state.instrument = t.instrument; }
 })();
+// Metronome persistence (Package A store.js). metBar is a plain bar array.
+(() => {
+  const bpm = store.get('tuner-met-bpm', CONFIG.metronome.bpmDefault);
+  if (typeof bpm === 'number') {
+    state.metBpm = Math.max(CONFIG.metronome.bpmMin, Math.min(CONFIG.metronome.bpmMax, Math.round(bpm)));
+  }
+  const bar = store.get('tuner-met-bar', null);
+  if (Array.isArray(bar) && bar.length) state.metBar = bar;
+})();
+function persistMet() {
+  store.set('tuner-met-bpm', state.metBpm);
+  store.set('tuner-met-bar', state.metBar);
+}
 
 /* ---------- UI modules ---------- */
 cacheColors();
@@ -166,6 +189,95 @@ controls.setMicState('idle');
 setDisplayMode(state.displayMode);
 controls.setHaptic(state.haptic);
 controls.setChime(state.chime);
+
+/* ---------- metronome view + mode nav ---------- */
+const metView = new MetronomeView(document, {
+  onStartStop: toggleMetronome,
+  onBpmChange: (bpm) => {
+    state.metBpm = bpm;
+    if (metronome) metronome.setBpm(bpm);
+    persistMet();
+  },
+  onTap: handleTap,
+  onBarChange: (bar) => {
+    state.metBar = bar;
+    if (metronome) metronome.setBar(bar);
+    persistMet();
+  },
+});
+metView.setBpm(state.metBpm);
+metView.setBar(state.metBar);
+
+document.getElementById('navTuner').addEventListener('click', () => setUiMode('tuner'));
+document.getElementById('navMet').addEventListener('click', () => setUiMode('metronome'));
+
+async function toggleMetronome() {
+  await ensureAudioContext();
+  if (metronome.isRunning) {
+    metronome.stop();
+    metView.setRunning(false);
+  } else {
+    metronome.setBpm(state.metBpm);
+    metronome.setBar(state.metBar);
+    metronome.start();
+    metView.setRunning(true);
+  }
+}
+
+function handleTap() {
+  const now = performance.now();
+  if (tapTimes.length && now - tapTimes[tapTimes.length - 1] > CONFIG.metronome.tapResetMs) tapTimes = [];
+  tapTimes.push(now);
+  const bpm = tapTempoBpm(tapTimes);
+  if (bpm != null) {
+    state.metBpm = bpm;
+    metView.setBpm(bpm);
+    if (metronome) metronome.setBpm(bpm);
+    persistMet();
+  }
+}
+
+/** Beat-highlight loop — polls the sample-clock schedule, not wall time. */
+function metLoop() {
+  metRafId = requestAnimationFrame(metLoop);
+  if (!audioCtx || !metronome || !metronome.isRunning) return;
+  const bi = metronome.pollBeat(audioCtx.currentTime);
+  if (bi >= 0) metView.highlightBeat(bi);
+}
+
+function setUiMode(mode) {
+  if (mode === state.uiMode) return;
+  state.uiMode = mode;
+  const toMet = mode === 'metronome';
+
+  document.getElementById('tunerView').hidden = toMet;
+  document.getElementById('metronomeView').hidden = !toMet;
+  const navTuner = document.getElementById('navTuner');
+  const navMet = document.getElementById('navMet');
+  navTuner.classList.toggle('is-on', !toMet);
+  navMet.classList.toggle('is-on', toMet);
+  navTuner.setAttribute('aria-pressed', String(!toMet));
+  navMet.setAttribute('aria-pressed', String(toMet));
+
+  if (toMet) {
+    // Leave the tuner: release the mic + stop its rAF loop; remember whether it ran.
+    state.wasRunning = state.running;
+    cancelAnimationFrame(rafId);
+    if (capture) capture.stop();
+    state.running = false;
+    controls.setMicState('idle');
+    stopTone();
+    cancelAnimationFrame(metRafId);
+    metLoop();
+  } else {
+    // Return to the tuner: STOP the metronome (modes are exclusive), stop its loop,
+    // and restart the mic only if it had been running.
+    if (metronome) metronome.stop();
+    metView.setRunning(false);
+    cancelAnimationFrame(metRafId);
+    if (state.wasRunning) startMic();
+  }
+}
 
 window.addEventListener('resize', () => { graph.resize(); strobe.resize(); });
 
@@ -212,6 +324,9 @@ async function ensureAudioContext() {
     masterGain.gain.value = CONFIG.masterGain;
     masterGain.connect(audioCtx.destination);
     tone = new ReferenceTone({ audioContext: audioCtx, destination: masterGain });
+    metronome = new Metronome({ audioContext: audioCtx, destination: masterGain });
+    metronome.setBpm(state.metBpm);
+    metronome.setBar(state.metBar);
   }
   if (audioCtx.state === 'suspended') await audioCtx.resume();
 }
@@ -433,5 +548,7 @@ function loop() {
 
 window.addEventListener('beforeunload', () => {
   cancelAnimationFrame(rafId);
+  cancelAnimationFrame(metRafId);
+  if (metronome) metronome.stop();
   if (capture) capture.stop();
 });

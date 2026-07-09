@@ -593,6 +593,12 @@ body {
 .feedback-row { display: flex; align-items: center; justify-content: space-between; margin: 10px 0; }
 .feedback-label { font: 500 14px 'Space Grotesk', sans-serif; color: var(--ink); }
 .seg-sm .seg-btn { padding: 6px 14px; font: 500 13px 'Space Grotesk', sans-serif; }
+/* ---------- Package E: mode navigation ---------- */
+.mode-nav { display: inline-flex; gap: 2px; background: var(--bg-bot); border-radius: 999px; padding: 3px; }
+.mode-btn { border: none; background: transparent; color: var(--muted-2); padding: 6px 14px;
+  border-radius: 999px; font-size: 13px; cursor: pointer; }
+.mode-btn.is-on { background: var(--accent); color: var(--bg-bot); }
+
 /* ---------- Package E: metronome view ---------- */
 .met-view { display: flex; flex-direction: column; align-items: center; gap: 22px; padding: 24px 16px; }
 .met-bpm-row { display: flex; align-items: center; gap: 20px; }
