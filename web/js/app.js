@@ -37,6 +37,7 @@ const state = {
 let preFilter = null;
 /** @type {Stabilizer} */   let stabilizer = null;
 /** @type {ReferenceTone} */ let tone = null;
+/** @type {GainNode} */     let masterGain = null;
 let rawBuf = null;
 let procBuf = null;
 let analysisN = 0;
@@ -177,7 +178,10 @@ function buildEngine() {
 async function ensureAudioContext() {
   if (!audioCtx) {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    tone = new ReferenceTone({ audioContext: audioCtx });
+    masterGain = audioCtx.createGain();
+    masterGain.gain.value = CONFIG.masterGain;
+    masterGain.connect(audioCtx.destination);
+    tone = new ReferenceTone({ audioContext: audioCtx, destination: masterGain });
   }
   if (audioCtx.state === 'suspended') await audioCtx.resume();
 }

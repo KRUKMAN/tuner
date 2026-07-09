@@ -109,6 +109,9 @@ export const CONFIG = deepFreeze({
                                  // tune — relabeling would map a slightly-sharp B3 onto
                                  // E2, since B3 sits a near-exact twelfth (x3) above E2.
 
+  // --- Package D: master gain bus -------------------------------------------
+  masterGain: 0.9,                // master bus gain (headroom so tone + chime can't clip)
+
   modes: {
     guitar: {
       windowSize: 2048,

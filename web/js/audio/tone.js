@@ -11,7 +11,8 @@
  * @param {number} [points=64]
  * @returns {Float32Array}
  */
-function raisedCosineCurve(peak, rising, points = 64) {
+/** Exported for reuse by the in-tune chime (js/app.js) and Package E's metronome click synth. */
+export function raisedCosineCurve(peak, rising, points = 64) {
   const n = Math.max(2, points | 0);
   const curve = new Float32Array(n);
   for (let i = 0; i < n; i++) {
@@ -26,13 +27,17 @@ export class ReferenceTone {
   /**
    * @param {Object} opts
    * @param {AudioContext} opts.audioContext Shared context.
+   * @param {AudioNode} [opts.destination]   Node to connect into; defaults to
+   *   audioContext.destination. Pass the master bus so this shares headroom
+   *   with other voices (e.g. the in-tune chime).
    * @param {number} [opts.amplitude=0.25]
    * @param {number} [opts.fadeInMs=10]
    * @param {number} [opts.fadeOutMs=20]
    */
-  constructor({ audioContext, amplitude = 0.25, fadeInMs = 10, fadeOutMs = 20 }) {
+  constructor({ audioContext, destination, amplitude = 0.25, fadeInMs = 10, fadeOutMs = 20 }) {
     if (!audioContext) throw new Error('ReferenceTone: audioContext is required');
     /** @private */ this._ctx = audioContext;
+    /** @private */ this._destination = destination || audioContext.destination;
     /** @private */ this._amplitude = amplitude;
     /** @private */ this._fadeInMs = fadeInMs;
     /** @private */ this._fadeOutMs = fadeOutMs;
@@ -69,7 +74,7 @@ export class ReferenceTone {
     gain.gain.setValueAtTime(0, now);
 
     osc.connect(gain);
-    gain.connect(ctx.destination);
+    gain.connect(this._destination);
 
     // Raised-cosine fade-in 0 -> amplitude over fadeInMs.
     const fadeIn = Math.max(0.0005, this._fadeInMs / 1000);
