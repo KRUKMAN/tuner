@@ -18,6 +18,7 @@ export class Controls {
    * @param {() => void} cb.onAuto Header AUTO/PINNED button while the mic is running: unpin.
    * @param {(index:number|null) => void} cb.onToneToggle Speaker button: play (index) or stop (null).
    * @param {(theme:'dark'|'light') => void} cb.onThemeToggle
+   * @param {(mode:'dial'|'strobe') => void} cb.onDisplayModeChange
    * @param {(midiArray:number[], name:string, id:string|null, instrument:string) => void} cb.onCustomSave
    * @param {(id:string) => void} cb.onCustomDelete
    */
@@ -43,6 +44,7 @@ export class Controls {
     this.sheetMain = this.$('sheetMain');
     this.sheetEditor = this.$('sheetEditor');
     this.tuningList = this.$('tuningList');
+    this.displaySeg = this.$('displaySeg');
 
     this._tuning = null;
     this._a4 = 440;
@@ -90,6 +92,10 @@ export class Controls {
     this.$('themeBtn').addEventListener('click', () => {
       const cur = this.doc.documentElement.getAttribute('data-theme') || 'dark';
       cb.onThemeToggle(cur === 'dark' ? 'light' : 'dark');
+    });
+
+    this.displaySeg.querySelectorAll('.seg-btn').forEach((btn) => {
+      btn.addEventListener('click', () => cb.onDisplayModeChange(btn.dataset.display));
     });
   }
 
@@ -321,6 +327,13 @@ export class Controls {
     this._renderTuningList();
   }
   setInstrument(inst) { this._setInstrumentUI(inst); }
+
+  /** @param {'dial'|'strobe'} mode */
+  setDisplayModeUI(mode) {
+    this.displaySeg.querySelectorAll('.seg-btn').forEach((b) => {
+      b.classList.toggle('is-on', b.dataset.display === mode);
+    });
+  }
 
   setA4(a4) {
     this._a4 = a4;

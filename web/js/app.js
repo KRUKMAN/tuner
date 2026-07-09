@@ -13,6 +13,7 @@ import { MicCapture } from './audio/capture.js';
 import { ReferenceTone } from './audio/tone.js';
 import { TrailBuffer } from './dsp/trail.js';
 import { Dial } from './ui/dial.js';
+import { Strobe } from './ui/strobe.js';
 import { Graph } from './ui/graph.js';
 import { Controls } from './ui/controls.js';
 
@@ -29,6 +30,7 @@ const state = {
   tonePlaying: null,
   lockedString: null,        // pinned string index; null = auto string select
   customTunings: [],         // [{id,name,instrument,strings}]
+  displayMode: CONFIG.displayModeDefault,  // 'dial' | 'strobe'
 };
 
 /** @type {AudioContext} */ let audioCtx = null;
@@ -82,7 +84,9 @@ function cacheColors() {
   accentInColor = cssVar('--accent-in') || accentInColor;
 }
 function pushGraphColors() {
-  graph.setColors({ accent: accentColor, accentIn: accentInColor, grid: cssVar('--muted-2') || '#556' });
+  const colors = { accent: accentColor, accentIn: accentInColor, grid: cssVar('--muted-2') || '#556' };
+  graph.setColors(colors);
+  strobe.setColors(colors);
 }
 // Status-bar / theme-color per theme (matches --bg-bot in css/styles.css).
 const THEME_COLORS = { dark: '#0b0d10', light: '#efe9df' };
@@ -101,6 +105,10 @@ function applyTheme(theme) {
   const saved = store.get('tuner-theme', null);
   if (saved) { root.setAttribute('data-theme', saved); applyThemeColor(saved); }
 })();
+(() => {
+  const dm = store.get('tuner-display-mode', null);
+  if (dm === 'dial' || dm === 'strobe') state.displayMode = dm;
+})();
 
 /* ---------- restore persisted state ---------- */
 loadCustoms();
@@ -114,7 +122,10 @@ loadCustoms();
 /* ---------- UI modules ---------- */
 cacheColors();
 const trail = new TrailBuffer({ capacity: 1024, windowMs: 5000 });
-const dial = new Dial(document.getElementById('dial'), { rangeCents: 50 });
+const dialEl = document.getElementById('dial');
+const strobeEl = document.getElementById('strobe');
+const dial = new Dial(dialEl, { rangeCents: 50 });
+const strobe = new Strobe(strobeEl, {});
 const graph = new Graph(document.getElementById('trail'), { rangeCents: 50, windowMs: 5000, inTuneCents: CONFIG.inTuneCents });
 pushGraphColors();
 graph.resize();
@@ -130,6 +141,7 @@ const controls = new Controls(document, {
   onThemeToggle: applyTheme,
   onCustomSave: saveCustom,
   onCustomDelete: deleteCustom,
+  onDisplayModeChange: setDisplayMode,
 });
 
 // initial UI reflects (possibly restored) default state
@@ -138,8 +150,9 @@ controls.setCustomTunings(state.customTunings);
 controls.setA4(state.a4);
 controls.setTuning(resolveTuning(state.tuningId), state.a4);
 controls.setMicState('idle');
+setDisplayMode(state.displayMode);
 
-window.addEventListener('resize', () => graph.resize());
+window.addEventListener('resize', () => { graph.resize(); strobe.resize(); });
 
 /* ---------- engine (re)build ---------- */
 function buildEngine() {
@@ -262,6 +275,16 @@ function changeA4(a4) {
   }
 }
 
+/** @param {'dial'|'strobe'} mode */
+function setDisplayMode(mode) {
+  state.displayMode = mode === 'strobe' ? 'strobe' : 'dial';
+  store.set('tuner-display-mode', state.displayMode);
+  dialEl.hidden = state.displayMode !== 'dial';
+  strobeEl.hidden = state.displayMode !== 'strobe';
+  if (state.displayMode === 'strobe') { strobe.reset(); strobe.resize(); }
+  controls.setDisplayModeUI(state.displayMode);
+}
+
 function toggleTone(index) {
   if (index == null) { stopTone(); return; }
   const t = resolveTuning(state.tuningId);
@@ -313,7 +336,7 @@ function loop() {
   const active = ds.status === 'active' || ds.status === 'hold';
   trail.push(now, active && ds.cents != null ? ds.cents : NaN, ds.confidence, ds.inTune);
   graph.render(trail, now);
-  dial.render(ds);
+  if (state.displayMode === 'strobe') strobe.render(ds, now); else dial.render(ds);
   controls.update(ds);
   if (ds.stringIndex !== lastStringIndex) {
     controls.setActiveString(ds.stringIndex);

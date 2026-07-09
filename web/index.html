@@ -35,7 +35,7 @@
       <canvas class="trail" id="trail" aria-hidden="true"></canvas>
       <div class="note" id="noteBlock">
         <div class="note-state" id="stateLabel"></div>
-        <div class="dial-wrap">
+        <div class="dial-wrap" id="dialWrap">
           <svg class="dial" id="dial" viewBox="0 0 300 300" aria-hidden="true">
             <path id="dialTrack" class="dial-track" d="M 56.72 243.28 A 132 132 0 1 1 243.28 243.28" />
             <path id="dialZone" class="dial-zone" d="M 119.16 21.55 A 132 132 0 0 1 180.84 21.55" />
@@ -43,6 +43,7 @@
             <path id="dialProgress" class="dial-progress" d="" />
             <circle id="dialIndicator" class="dial-indicator" cx="150" cy="18" r="7" />
           </svg>
+          <canvas class="strobe" id="strobe" aria-hidden="true" hidden></canvas>
           <div class="note-main" id="noteMain">
             <span class="note-name" id="noteName"></span>
             <span class="note-oct" id="noteOct"></span>
@@ -89,6 +90,11 @@
           <button class="a4-step" id="a4Down" type="button">−</button>
           <div class="a4-display"><span id="a4Big">440</span> Hz</div>
           <button class="a4-step" id="a4Up" type="button">+</button>
+        </div>
+        <div class="sheet-section-title">Display</div>
+        <div class="seg" id="displaySeg">
+          <button class="seg-btn is-on" data-display="dial" type="button">Dial</button>
+          <button class="seg-btn" data-display="strobe" type="button">Strobe</button>
         </div>
         <button class="sheet-done" id="sheetDone" type="button">Done</button>
       </div>

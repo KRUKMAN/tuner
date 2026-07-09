@@ -114,6 +114,9 @@ export const CONFIG = deepFreeze({
 
   // --- Package D: strobe display ---------------------------------------------
   strobeVelocityScale: 1.2,       // px/sec phase drift per cent of mistuning, outside the dead-band
+  strobeStripeCount: 12,          // stripes across the band at rest
+  strobeBandHeightFrac: 0.22,     // stripe band height as a fraction of the canvas size
+  displayModeDefault: 'dial',     // 'dial' | 'strobe'
 
   modes: {
     guitar: {

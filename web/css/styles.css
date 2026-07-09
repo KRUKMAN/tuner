@@ -223,7 +223,7 @@ body {
 .note-swap { animation: noteIn 180ms cubic-bezier(0.22, 1, 0.36, 1); }
 
 /* ---------- Cents dial (rings the note) ---------- */
-.dial {
+.dial, .strobe {
   position: absolute;
   z-index: 4;
   pointer-events: none;
