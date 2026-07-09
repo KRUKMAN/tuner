@@ -11,6 +11,7 @@ import runTrail from './test-trail.js';
 import runStore from './test-store.js';
 import runSwAssets from './test-sw-assets.js';
 import runInstruments from './test-instruments.js';
+import runStrobe from './test-strobe.js';
 
 runTheory();
 runFilters();
@@ -21,6 +22,7 @@ runTrail();
 runStore();
 runSwAssets();
 runInstruments();
+runStrobe();
 
 const ok = report();
 process.exit(ok ? 0 : 1);

@@ -112,6 +112,9 @@ export const CONFIG = deepFreeze({
   // --- Package D: master gain bus -------------------------------------------
   masterGain: 0.9,                // master bus gain (headroom so tone + chime can't clip)
 
+  // --- Package D: strobe display ---------------------------------------------
+  strobeVelocityScale: 1.2,       // px/sec phase drift per cent of mistuning, outside the dead-band
+
   modes: {
     guitar: {
       windowSize: 2048,
