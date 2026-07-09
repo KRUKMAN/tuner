@@ -261,11 +261,20 @@ body {
 }
 .in-tune-snap { animation: tonepulse 260ms ease-in-out 1; }
 
-/* ---------- in-tune recolor ---------- */
+/* ---------- in-tune recolor + non-colour (shape) redundant cue ---------- */
+/* The visual state label (js/ui/note-status.js) already prefixes "✓" on in-tune;
+   these two rules add a SHAPE cue to the graphical elements too, so the moment
+   reads without colour (spec §8 redundant in-tune cue). */
 .in-tune .note-state    { color: var(--accent-in); }
 .in-tune .dot           { background: var(--accent-in); box-shadow: 0 0 10px var(--accent-in); }
 .in-tune .dial-progress { stroke: var(--accent-in); }
-.in-tune .dial-indicator{ fill: var(--accent-in); filter: drop-shadow(0 0 14px rgba(52, 211, 153, 0.85)); }
+.in-tune .dial-indicator {
+  /* filled dot -> outlined ring: a silhouette change, not just a colour swap */
+  fill: none;
+  stroke: var(--accent-in);
+  stroke-width: 3;
+  filter: drop-shadow(0 0 14px rgba(52, 211, 153, 0.85));
+}
 .in-tune .dial-zone     { opacity: 0.9; stroke-width: 4; }
 
 /* ---------- String selector ---------- */
@@ -282,6 +291,7 @@ body {
   max-width: 52px;
   min-width: 0;
   margin: 0 auto;
+  position: relative;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -303,6 +313,22 @@ body {
   box-shadow: 0 0 22px rgba(76, 194, 242, 0.45);
 }
 .in-tune .str.is-active { background: var(--accent-in); box-shadow: 0 0 22px rgba(52, 211, 153, 0.45); }
+/* Shape cue on the active string too: a checkmark badge, not colour alone. */
+.in-tune .str.is-active::after {
+  content: '✓';
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--bg-bot);
+  color: var(--accent-in);
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+  box-shadow: 0 0 0 1px var(--accent-in);
+}
 .str.is-pinned {   /* pitch detection locked to this string */
   border-color: var(--accent);
   outline: 2px solid var(--accent);
