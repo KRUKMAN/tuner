@@ -32,6 +32,7 @@ const CORE_ASSETS = [
   './js/music/meter.js',
   './js/ui/controls.js',
   './js/ui/dial.js',
+  './js/ui/focus-order.js',
   './js/ui/graph.js',
   './js/ui/metronome-view.js',
   './js/ui/note-status.js',

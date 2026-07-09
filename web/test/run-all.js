@@ -16,6 +16,7 @@ import runConfig from './test-config.js';
 import runMeter from './test-meter.js';
 import runMetronome from './test-metronome.js';
 import runNoteStatus from './test-note-status.js';
+import runFocusOrder from './test-focus-order.js';
 
 runTheory();
 runFilters();
@@ -31,6 +32,7 @@ runConfig();
 runMeter();
 runMetronome();
 runNoteStatus();
+runFocusOrder();
 
 const ok = report();
 process.exit(ok ? 0 : 1);
