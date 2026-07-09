@@ -15,6 +15,7 @@ import runStrobe from './test-strobe.js';
 import runConfig from './test-config.js';
 import runMeter from './test-meter.js';
 import runMetronome from './test-metronome.js';
+import runNoteStatus from './test-note-status.js';
 
 runTheory();
 runFilters();
@@ -29,6 +30,7 @@ runStrobe();
 runConfig();
 runMeter();
 runMetronome();
+runNoteStatus();
 
 const ok = report();
 process.exit(ok ? 0 : 1);
