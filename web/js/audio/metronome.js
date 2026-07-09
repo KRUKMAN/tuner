@@ -32,6 +32,9 @@ export class Metronome {
     /** @private */ this._evIdx = 0;
     /** @private */ this._barStartTime = 0;   // absolute ctx seconds of current bar's beat 0
     /** @private */ this._beatDur = config.bpmDefault > 0 ? 60 / config.bpmDefault : 0.5;
+    // Invariant: _barDurSec must be > 0 (a non-empty bar) for the pump to make
+    // progress. A <= 0 value (empty/invalid bar) is treated as "not running" by
+    // _pumpOnce rather than spinning a no-op setTimeout forever — see there.
     /** @private */ this._barDurSec = 0;
     /** @private @type {{time:number, beatIndex:number}[]} */ this._beatQueue = [];
   }
@@ -65,9 +68,14 @@ export class Metronome {
     const ctx = this._ctx;
     if (!this._master) {
       this._master = ctx.createGain();
-      this._master.gain.value = this._cfg.gain;
       this._master.connect(this._dest);
     }
+    // Restore the metronome's own bus gain (stop() mutes it; see there). This node
+    // is metronome-owned — connected into the shared destination bus, never IS it —
+    // so muting/restoring it never touches the reference tone or the in-tune chime.
+    const now0 = ctx.currentTime;
+    this._master.gain.cancelScheduledValues(now0);
+    this._master.gain.setValueAtTime(this._cfg.gain, now0);
     this._loadBar();                                   // expand current bar at current bpm
     this._evIdx = 0;
     this._beatQueue = [];
@@ -77,6 +85,15 @@ export class Metronome {
   }
 
   stop() {
+    // Silence anything already scheduled inside the look-ahead window (up to
+    // scheduleAheadSec ahead) so Stop never lets a trailing click sneak out and a
+    // rapid stop→start can't overlap a stale click onto the new lead-in. Idempotent:
+    // safe to call twice, and safe before start() has ever run (_master is null).
+    if (this._master) {
+      const now = this._ctx.currentTime;
+      this._master.gain.cancelScheduledValues(now);
+      this._master.gain.setValueAtTime(0, now);
+    }
     this._running = false;
     if (this._timer != null) { clearTimeout(this._timer); this._timer = null; }
     this._beatQueue = [];
@@ -105,17 +122,22 @@ export class Metronome {
     this._barDurSec = (this._bar ? this._bar.length : 0) * this._beatDur;
   }
 
-  /** @private The pump: schedule every click within the look-ahead window, then re-arm. */
-  _pump() {
+  /**
+   * @private One scheduling pass: schedule every click within the look-ahead window
+   * and advance bar boundaries. Extracted out of _pump() so it can be driven directly
+   * by a fake-clock test without real setTimeout (see test-metronome.js).
+   */
+  _pumpOnce() {
     const cfg = this._cfg;
     const ctx = this._ctx;
     let guard = 0;
-    while (this._running && guard++ < 10000) {
+    while (this._running && guard++ < cfg.maxEventsPerPump) {
       const horizon = ctx.currentTime + cfg.scheduleAheadSec;
       if (this._evIdx < this._events.length) {
         const ev = this._events[this._evIdx];
         const when = this._barStartTime + ev.timeOffsetSec;
         if (when >= horizon) break;
+        if (when < ctx.currentTime) { this._evIdx++; continue; }   // stall: drop past-due, keep phase
         this._scheduleClick(when, ev.level);
         if (ev.level !== 'sub') {                       // beat-first click → highlightable beat
           this._beatQueue.push({ time: when, beatIndex: Math.round(ev.timeOffsetSec / this._beatDur) });
@@ -124,14 +146,22 @@ export class Metronome {
       } else {
         // bar boundary — advance by the EXACT bar duration (no rounding → no drift),
         // then apply live meter/bpm edits. Handles all-rest bars (no events) too.
+        // Invariant (see _barDurSec decl.): a <= 0 bar duration can never advance,
+        // so treat it as "not running" instead of re-arming a no-op pump forever.
+        if (this._barDurSec <= 0) { this._running = false; break; }
         const barEnd = this._barStartTime + this._barDurSec;
-        if (this._barDurSec <= 0 || barEnd >= horizon) break;
+        if (barEnd >= horizon) break;
         this._barStartTime = barEnd;
         this._evIdx = 0;
         this._loadBar();
       }
     }
-    if (this._running) this._timer = setTimeout(() => this._pump(), cfg.lookaheadMs);
+  }
+
+  /** @private The pump: run one scheduling pass, then re-arm via setTimeout. */
+  _pump() {
+    this._pumpOnce();
+    if (this._running) this._timer = setTimeout(() => this._pump(), this._cfg.lookaheadMs);
   }
 
   /**
@@ -146,6 +176,9 @@ export class Metronome {
     const ctx = this._ctx;
     const voice = cfg.levels[level] || cfg.levels.normal;
 
+    // 0.0005 / 0.001 below are Web Audio API safety floors (setValueCurveAtTime
+    // needs a non-zero duration; a curve needs a non-zero release after its attack),
+    // not tunable parameters, so they stay as literals rather than moving to CONFIG.
     const attack = Math.max(0.0005, cfg.clickAttackMs / 1000);
     const total = Math.max(attack + 0.001, cfg.clickMs / 1000);
 

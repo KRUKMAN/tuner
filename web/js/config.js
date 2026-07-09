@@ -164,6 +164,7 @@ export const CONFIG = deepFreeze({
     // lookaheadMs/1000 (guarded in test-config) so no click slips between pumps.
     lookaheadMs: 25,            // setTimeout pump period
     scheduleAheadSec: 0.1,      // schedule any click within this window of ctx.currentTime
+    maxEventsPerPump: 10000,    // runaway-loop guard: hard cap on iterations per pump pass
 
     // click synth (one short oscillator burst per click, raised-cosine shaped).
     // sine is weak on phone speakers → triangle default.
