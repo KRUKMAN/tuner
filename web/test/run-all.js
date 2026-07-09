@@ -8,6 +8,7 @@ import runStabilizer from './test-stabilizer.js';
 import runPitch from './test-pitch.js';
 import runIntegration from './test-integration.js';
 import runTrail from './test-trail.js';
+import runStore from './test-store.js';
 
 runTheory();
 runFilters();
@@ -15,6 +16,7 @@ runStabilizer();
 runPitch();
 runIntegration();
 runTrail();
+runStore();
 
 const ok = report();
 process.exit(ok ? 0 : 1);
