@@ -9,6 +9,7 @@ import runPitch from './test-pitch.js';
 import runIntegration from './test-integration.js';
 import runTrail from './test-trail.js';
 import runStore from './test-store.js';
+import runSwAssets from './test-sw-assets.js';
 
 runTheory();
 runFilters();
@@ -17,6 +18,7 @@ runPitch();
 runIntegration();
 runTrail();
 runStore();
+runSwAssets();
 
 const ok = report();
 process.exit(ok ? 0 : 1);
