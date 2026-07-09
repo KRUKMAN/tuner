@@ -19,6 +19,7 @@ const CORE_ASSETS = [
   './js/store.js',
   './js/audio/capture.js',
   './js/audio/tone.js',
+  './js/audio/metronome.js',
   './js/dsp/fft.js',
   './js/dsp/filters.js',
   './js/dsp/mpm.js',

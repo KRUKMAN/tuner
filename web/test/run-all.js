@@ -14,6 +14,7 @@ import runInstruments from './test-instruments.js';
 import runStrobe from './test-strobe.js';
 import runConfig from './test-config.js';
 import runMeter from './test-meter.js';
+import runMetronome from './test-metronome.js';
 
 runTheory();
 runFilters();
@@ -27,6 +28,7 @@ runInstruments();
 runStrobe();
 runConfig();
 runMeter();
+runMetronome();
 
 const ok = report();
 process.exit(ok ? 0 : 1);
