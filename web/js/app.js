@@ -154,6 +154,7 @@ const controls = new Controls(document, {
   onDisplayModeChange: setDisplayMode,
   onHapticToggle: setHaptic,
   onChimeToggle: setChime,
+  onRetry: startMic,
 });
 
 // initial UI reflects (possibly restored) default state
@@ -232,9 +233,14 @@ async function startMic() {
     cancelAnimationFrame(rafId);
     loop();
   } catch (err) {
-    const denied = err && (err.name === 'NotAllowedError' || err.name === 'SecurityError');
-    controls.setMicState(denied ? 'denied' : 'error',
-      denied ? undefined : `Could not start audio: ${err && err.message ? err.message : err}`);
+    const name = err && err.name;
+    if (name === 'NotAllowedError' || name === 'SecurityError') {
+      controls.setMicState('denied', 'Microphone access is blocked. Allow it for this site in your browser settings, then retry.');
+    } else if (name === 'NotFoundError') {
+      controls.setMicState('notfound', 'No microphone found. Connect one and retry.');
+    } else {
+      controls.setMicState('error', `Could not start audio: ${err && err.message ? err.message : err}`);
+    }
   } finally {
     state.starting = false;
   }

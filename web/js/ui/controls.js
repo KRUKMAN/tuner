@@ -23,6 +23,7 @@ export class Controls {
    * @param {(on:boolean) => void} cb.onChimeToggle
    * @param {(midiArray:number[], name:string, id:string|null, instrument:string) => void} cb.onCustomSave
    * @param {(id:string) => void} cb.onCustomDelete
+   * @param {() => void} cb.onRetry Retry button on the mic error/disconnected overlay.
    */
   constructor(doc, cb) {
     this.doc = doc;
@@ -40,7 +41,8 @@ export class Controls {
     this.toneBtn = this.$('toneBtn');
     this.tuningName = this.$('tuningName');
     this.overlay = this.$('overlay');
-    this.overlayNote = this.$('overlayNote');
+    this.overlayStatus = this.$('overlayStatus');
+    this.retryBtn = this.$('retryBtn');
     this.sheet = this.$('sheet');
     this.scrim = this.$('sheetScrim');
     this.sheetMain = this.$('sheetMain');
@@ -90,6 +92,7 @@ export class Controls {
     this.$('a4Btn').addEventListener('click', () => this.openSheet());
     this.$('sheetDone').addEventListener('click', () => this.closeSheet());
     this.scrim.addEventListener('click', () => this.closeSheet());
+    this.retryBtn.addEventListener('click', () => cb.onRetry());
 
     this.$('a4Down').addEventListener('click', () => cb.onA4Change(this._a4 - 1));
     this.$('a4Up').addEventListener('click', () => cb.onA4Change(this._a4 + 1));
@@ -562,11 +565,24 @@ export class Controls {
   setMicState(state, message) {
     this._micRunning = state === 'running';
     this.autoDot.classList.toggle('is-idle', state !== 'running');
-    if (state === 'running') { this.overlay.classList.add('is-hidden'); return; }
+    if (state === 'running') {
+      this.overlay.classList.add('is-hidden');
+      this.overlayStatus.hidden = true;
+      this.retryBtn.hidden = true;
+      return;
+    }
     this.overlay.classList.remove('is-hidden');
-    this.overlayNote.classList.toggle('is-error', state === 'denied' || state === 'error');
-    if (message) this.overlayNote.textContent = message;
-    else if (state === 'requesting') this.overlayNote.textContent = 'Requesting microphone…';
-    else if (state === 'denied') this.overlayNote.textContent = 'Microphone blocked. Allow it in your browser and reload.';
+    const isError = state === 'denied' || state === 'notfound' || state === 'error' || state === 'disconnected';
+    this.overlayStatus.classList.toggle('is-error', isError);
+    this.retryBtn.hidden = !isError;
+    if (message) {
+      this.overlayStatus.textContent = message;
+      this.overlayStatus.hidden = false;
+    } else if (state === 'requesting') {
+      this.overlayStatus.textContent = 'Requesting microphone…';
+      this.overlayStatus.hidden = false;
+    } else {
+      this.overlayStatus.hidden = true;
+    }
   }
 }

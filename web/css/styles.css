@@ -377,7 +377,19 @@ body {
 }
 .start-btn:active { transform: scale(0.98); }
 .overlay-note { margin-top: 16px; font: 400 12px 'JetBrains Mono', monospace; color: var(--muted-2); }
-.overlay-note.is-error { color: var(--accent-flat); }
+.overlay-status { margin-top: 10px; font: 400 12px 'JetBrains Mono', monospace; color: var(--muted-2); }
+.overlay-status.is-error { color: var(--accent-flat); }
+.retry-btn {
+  margin-top: 14px;
+  padding: 11px 22px;
+  border-radius: 12px;
+  border: 1px solid var(--surface-brd);
+  background: var(--surface);
+  color: var(--ink);
+  font: 600 14px 'Space Grotesk', sans-serif;
+  cursor: pointer;
+}
+.retry-btn:active { transform: scale(0.97); }
 
 /* ---------- Tuning sheet ---------- */
 .sheet-scrim {
