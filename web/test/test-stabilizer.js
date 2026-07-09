@@ -1,7 +1,7 @@
 // Node. Stabilizer gate/median/octave/hysteresis/hold behaviors (Section 6).
 // Drives Stabilizer.update(frame, tMs) with synthetic PitchFrames and 16.67 ms steps.
 
-import { suite, assert } from './assert.js';
+import { suite, assert, assertClose } from './assert.js';
 import { Stabilizer } from '../js/dsp/stabilizer.js';
 import { CONFIG } from '../js/config.js';
 
@@ -351,6 +351,50 @@ export default function run() {
     assert(ds.status === 'active', `fixed -45/-55 gate still activates (got '${ds.status}')`);
     assert(ds.noteName === 'A' && ds.octave === 2, `note A2 (got ${ds.noteName}${ds.octave})`);
     assert(Math.abs(ds.cents) < 1, `|cents| < 1 (got ${num(ds.cents)})`);
+  });
+
+  // ==================================================================
+  // lockedString (UI "pin a string" wiring). The Stabilizer has supported
+  // this since it was built; only web/js/ui/controls.js + app.js were
+  // missing the wiring to call setLockedString(). These prove the DSP
+  // side the UI now relies on: a locked string overrides auto-select
+  // regardless of what's actually being played, and unlocking restores
+  // auto-select.
+  // ==================================================================
+
+  suite('stabilizer: lockedString pins the reference regardless of detected pitch', () => {
+    const s = new Stabilizer({
+      config: CONFIG,
+      a4: 440,
+      tuning: [40, 45, 50, 55, 59, 64],
+      lockedString: 1, // A2 (110 Hz) pinned as the target
+    });
+    let t = 0;
+    let ds;
+    // Feed E2 (82.41 Hz — string index 0's own pitch) well past the gate + onset.
+    for (let i = 0; i < 20; i++) {
+      ds = s.update(hframe(82.41, 0.95, -20, 0.9), t);
+      t += DT;
+    }
+    assert(ds.status === 'active', `locked + steady input → 'active' (got '${ds.status}')`);
+    assert(
+      ds.stringIndex === 1,
+      `stays locked to string index 1 (A2), does NOT auto-select string 0 (got ${ds.stringIndex})`,
+    );
+    assert(ds.midi === 45, `displayed midi is the locked A2 (45), not E2's 40 (got ${ds.midi})`);
+    assertClose(ds.cents, -500, 5, 'cents reflect E2 played against the locked A2 target (~ -500c)');
+
+    // Unlock: the same steady E2 input should now auto-select string 0 (E2)
+    // after a few consistent frames (note-switch hysteresis).
+    s.setLockedString(null);
+    for (let i = 0; i < 10; i++) {
+      ds = s.update(hframe(82.41, 0.95, -20, 0.9), t);
+      t += DT;
+    }
+    assert(ds.status === 'active', `still 'active' after unlocking (got '${ds.status}')`);
+    assert(ds.stringIndex === 0, `auto-selects string index 0 (E2) once unlocked (got ${ds.stringIndex})`);
+    assert(ds.midi === 40, `displayed midi is E2 (40) (got ${ds.midi})`);
+    assertClose(ds.cents, 0, 3, 'cents settle near 0 once auto-locked onto the matching string');
   });
 }
 

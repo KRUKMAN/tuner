@@ -13,7 +13,9 @@ export class Controls {
    * @param {(instrument:'guitar'|'bass') => void} cb.onModeChange
    * @param {(tuningId:string) => void} cb.onTuningChange
    * @param {(a4:number) => void} cb.onA4Change
-   * @param {(index:number|null) => void} cb.onToneToggle
+   * @param {(index:number) => void} cb.onStringSelect Tap a string circle: pin/unpin detection to it.
+   * @param {() => void} cb.onAuto Header AUTO/PINNED button while the mic is running: unpin.
+   * @param {(index:number|null) => void} cb.onToneToggle Speaker button: play (index) or stop (null).
    * @param {(theme:'dark'|'light') => void} cb.onThemeToggle
    * @param {(midiArray:number[], name:string, id:string|null) => void} cb.onCustomSave
    * @param {(id:string) => void} cb.onCustomDelete
@@ -29,7 +31,9 @@ export class Controls {
     this.noteOct = this.$('noteOct');
     this.noteSub = this.$('noteSub');
     this.autoDot = this.$('autoDot');
+    this.autoLabel = this.$('autoLabel');
     this.stringsEl = this.$('strings');
+    this.toneBtn = this.$('toneBtn');
     this.tuningName = this.$('tuningName');
     this.overlay = this.$('overlay');
     this.overlayNote = this.$('overlayNote');
@@ -45,6 +49,8 @@ export class Controls {
     this._customs = [];
     this._playingIndex = null;
     this._activeIndex = null;
+    this._pinnedIndex = null;
+    this._micRunning = false;
     this._blankTimer = null;
     this._lastNoteKey = null;
 
@@ -58,7 +64,18 @@ export class Controls {
   _wire() {
     const cb = this.cb;
     this.$('startBtn').addEventListener('click', () => cb.onMicStart());
-    this.$('autoBtn').addEventListener('click', () => cb.onMicStart());
+    this.$('autoBtn').addEventListener('click', () => {
+      // Mic idle: start it (unchanged). Mic running: this doubles as PINNED→AUTO (unpin).
+      if (this._micRunning) cb.onAuto();
+      else cb.onMicStart();
+    });
+
+    this.toneBtn.addEventListener('click', () => {
+      if (this._playingIndex != null) { cb.onToneToggle(null); return; }
+      const target = this._pinnedIndex != null ? this._pinnedIndex : this._activeIndex;
+      if (target == null) return;
+      cb.onToneToggle(target);
+    });
 
     this.$('tuningBtn').addEventListener('click', () => this.openSheet());
     this.$('a4Btn').addEventListener('click', () => this.openSheet());
@@ -155,22 +172,28 @@ export class Controls {
       btn.type = 'button';
       btn.className = 'str';
       btn.textContent = info.name[0];
-      btn.title = `${info.name}${info.octave} · ${frequencyFromMidi(midi, a4).toFixed(2)} Hz — tap for reference tone`;
+      btn.title = `${info.name}${info.octave} · ${frequencyFromMidi(midi, a4).toFixed(2)} Hz — tap to pin`;
       btn.addEventListener('click', () => {
-        this.cb.onToneToggle(this._playingIndex === i ? null : i);
+        this.cb.onStringSelect(i);
       });
       this.stringsEl.appendChild(btn);
     });
     this._setActive(this._activeIndex);
     this._setPlaying(this._playingIndex);
+    this._applyPinnedState();
+    this._syncToneBtn();
     this._renderTuningList();
   }
 
   setActiveString(index) { this._setActive(index); }
   _setActive(index) {
+    const changed = index !== this._activeIndex;
     this._activeIndex = index;
     const kids = this.stringsEl.children;
     for (let i = 0; i < kids.length; i++) kids[i].classList.toggle('is-active', i === index);
+    // Perf: update(ds) drives this every animation frame — only re-sync the tone
+    // button's disabled/title state when the active string actually changes.
+    if (changed) this._syncToneBtn();
   }
 
   setTonePlaying(index) { this._setPlaying(index); }
@@ -178,6 +201,35 @@ export class Controls {
     this._playingIndex = index;
     const kids = this.stringsEl.children;
     for (let i = 0; i < kids.length; i++) kids[i].classList.toggle('is-playing', i === index);
+    this.toneBtn.classList.toggle('is-playing', index != null);
+    this.toneBtn.setAttribute('aria-pressed', index != null ? 'true' : 'false');
+  }
+
+  /* ---------- pin (locked string) ---------- */
+
+  /** @param {number|null} index null = auto (unpinned). */
+  setPinned(index) {
+    this._pinnedIndex = index != null ? index : null;
+    this._applyPinnedState();
+    this._syncToneBtn();
+  }
+
+  _applyPinnedState() {
+    const kids = this.stringsEl.children;
+    for (let i = 0; i < kids.length; i++) kids[i].classList.toggle('is-pinned', i === this._pinnedIndex);
+    this.autoLabel.textContent = this._pinnedIndex != null ? 'PINNED' : 'AUTO';
+  }
+
+  /** Tone button target is the pinned string, else the auto-detected one. */
+  _syncToneBtn() {
+    const target = this._pinnedIndex != null ? this._pinnedIndex : this._activeIndex;
+    this.toneBtn.disabled = target == null;
+    if (target != null && this._tuning) {
+      const info = midiToName(this._tuning.strings[target]);
+      this.toneBtn.title = `Play ${info.name}${info.octave} reference tone`;
+    } else {
+      this.toneBtn.title = 'Play reference tone';
+    }
   }
 
   /* ---------- tuning list + customs ---------- */
@@ -362,6 +414,7 @@ export class Controls {
   /* ---------- mic / status ---------- */
 
   setMicState(state, message) {
+    this._micRunning = state === 'running';
     this.autoDot.classList.toggle('is-idle', state !== 'running');
     if (state === 'running') { this.overlay.classList.add('is-hidden'); return; }
     this.overlay.classList.remove('is-hidden');

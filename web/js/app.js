@@ -27,6 +27,7 @@ const state = {
   running: false,
   starting: false,
   tonePlaying: null,
+  lockedString: null,        // pinned string index; null = auto string select
   customTunings: [],         // [{id,name,instrument,strings}]
 };
 
@@ -122,6 +123,8 @@ const controls = new Controls(document, {
   onModeChange: changeInstrument,
   onTuningChange: changeTuning,
   onA4Change: changeA4,
+  onStringSelect: selectString,
+  onAuto: handleAuto,
   onToneToggle: toggleTone,
   onThemeToggle: applyTheme,
   onCustomSave: saveCustom,
@@ -163,6 +166,9 @@ function buildEngine() {
     stabilizer.setA4(state.a4);
     stabilizer.setTuning(t.strings);
   }
+  // reset()/setTuning() don't set lockedString (a fresh Stabilizer never sees it
+  // either, since the ctor call above omits it) — always re-apply explicitly.
+  stabilizer.setLockedString(state.lockedString);
   trail.clear();
   lastStringIndex = null;
 }
@@ -207,11 +213,28 @@ function selectTuning(id) {
   if (!t) return;
   state.tuningId = id;
   state.instrument = t.instrument;
+  // New tuning may have a different string count — the old pin can't carry over.
+  state.lockedString = null;
   rememberTuning(id);
   controls.setInstrument(t.instrument);
+  controls.setPinned(null);
   controls.setTuning(t, state.a4);
   stopTone();
   if (state.running) buildEngine();
+}
+
+/** Tap a string circle: pin detection to it, or unpin if it's already pinned. */
+function selectString(index) {
+  state.lockedString = state.lockedString === index ? null : index;
+  if (stabilizer) stabilizer.setLockedString(state.lockedString);
+  controls.setPinned(state.lockedString);
+}
+
+/** Header AUTO/PINNED button while the mic is running: unpin back to auto select. */
+function handleAuto() {
+  state.lockedString = null;
+  if (stabilizer) stabilizer.setLockedString(null);
+  controls.setPinned(null);
 }
 
 function changeInstrument(instrument) {
