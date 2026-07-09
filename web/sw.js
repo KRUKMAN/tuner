@@ -33,6 +33,7 @@ const CORE_ASSETS = [
   './js/ui/controls.js',
   './js/ui/dial.js',
   './js/ui/graph.js',
+  './js/ui/metronome-view.js',
   './js/ui/strobe.js',
   './icons/favicon-32.png',
   './icons/apple-touch-icon.png',
