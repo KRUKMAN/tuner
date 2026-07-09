@@ -76,6 +76,7 @@ self.addEventListener('fetch', (e) => {
           return res;
         })
         .catch(() => null);
+      if (cached) e.waitUntil(network); // keep the SW alive for the background refresh
       return cached || network.then((r) => r || caches.match('./index.html'));
     })
   );

@@ -9,7 +9,7 @@ import { dirname, join, relative, sep, extname } from 'node:path';
 const WEB = join(dirname(fileURLToPath(import.meta.url)), '..'); // web/
 const RUNTIME_EXT = new Set(['.html', '.css', '.js', '.webmanifest', '.woff2', '.png']);
 const EXCLUDE_DIRS = new Set(['test']);
-const EXCLUDE_FILES = new Set(['sw.js', 'package.json']);
+const EXCLUDE_FILES = new Set(['sw.js']);
 
 function walk(dir, out = []) {
   for (const name of readdirSync(dir)) {
