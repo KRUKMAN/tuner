@@ -10,6 +10,7 @@ import runIntegration from './test-integration.js';
 import runTrail from './test-trail.js';
 import runStore from './test-store.js';
 import runSwAssets from './test-sw-assets.js';
+import runInstruments from './test-instruments.js';
 
 runTheory();
 runFilters();
@@ -19,6 +20,7 @@ runIntegration();
 runTrail();
 runStore();
 runSwAssets();
+runInstruments();
 
 const ok = report();
 process.exit(ok ? 0 : 1);
