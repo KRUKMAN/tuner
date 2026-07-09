@@ -12,10 +12,12 @@ export class MicCapture {
    * @param {AudioContext} opts.audioContext  Shared context created by app.js.
    * @param {number} opts.windowSize          Sets analyser.fftSize (2048 or 4096).
    */
-  constructor({ audioContext, windowSize }) {
+  constructor({ audioContext, windowSize, onTrackEnded }) {
     if (!audioContext) throw new Error('MicCapture: audioContext is required');
     /** @private */ this._ctx = audioContext;
     /** @private */ this._windowSize = windowSize;
+    /** @private @type {(() => void)|null} */
+    this._onTrackEnded = typeof onTrackEnded === 'function' ? onTrackEnded : null;
 
     /** @private @type {AnalyserNode} */
     this._analyser = audioContext.createAnalyser();
@@ -53,6 +55,18 @@ export class MicCapture {
       this._source = this._ctx.createMediaStreamSource(stream);
       this._source.connect(this._analyser);
       // Deliberately do NOT connect analyser -> destination (avoid feedback loop).
+
+      // Surface mid-session mic loss (device unplugged, permission revoked while
+      // running, etc). track.stop() in stop() below does NOT dispatch 'ended' per
+      // spec, so this only fires for genuine external loss — the `_state !==
+      // 'running'` guard is defensive belt-and-braces on top of that.
+      for (const track of stream.getTracks()) {
+        track.onended = () => {
+          if (this._state !== 'running') return;
+          this._state = 'error';
+          if (this._onTrackEnded) this._onTrackEnded();
+        };
+      }
 
       this._state = 'running';
     } catch (err) {

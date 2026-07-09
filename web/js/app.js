@@ -225,7 +225,7 @@ async function startMic() {
     if (capture) capture.stop();
     const t = resolveTuning(state.tuningId);
     const mode = engineModeFor(t, state.a4);
-    capture = new MicCapture({ audioContext: audioCtx, windowSize: 2 * CONFIG.modes[mode].windowSize });
+    capture = new MicCapture({ audioContext: audioCtx, windowSize: 2 * CONFIG.modes[mode].windowSize, onTrackEnded: handleMicDisconnected });
     buildEngine();
     await capture.start();
     state.running = true;
@@ -244,6 +244,12 @@ async function startMic() {
   } finally {
     state.starting = false;
   }
+}
+
+function handleMicDisconnected() {
+  state.running = false;
+  cancelAnimationFrame(rafId);
+  controls.setMicState('disconnected', 'Microphone disconnected. Tap Retry to reconnect.');
 }
 
 /* ---------- controls handlers ---------- */
