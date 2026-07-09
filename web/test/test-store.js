@@ -61,4 +61,20 @@ export default function run() {
       globalThis.localStorage = saved;
     }
   });
+
+  suite('store: throwing backend is swallowed (quota / private mode)', () => {
+    const saved = globalThis.localStorage;
+    globalThis.localStorage = {
+      getItem() { throw new Error('SecurityError'); },
+      setItem() { throw new Error('QuotaExceededError'); },
+      removeItem() { throw new Error('SecurityError'); },
+    };
+    try {
+      assert(store.set('k', 1) === false, 'set() → false when setItem throws');
+      assert(store.get('k', 'fb') === 'fb', 'get() → fallback when getItem throws');
+      assert(store.remove('k') === false, 'remove() → false when removeItem throws');
+    } finally {
+      globalThis.localStorage = saved;
+    }
+  });
 }

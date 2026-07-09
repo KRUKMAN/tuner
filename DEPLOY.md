@@ -40,7 +40,8 @@ Connect the repo (or drag-drop). Set the **output/root directory to `web`** and
 
 - **HTTPS is mandatory** for `getUserMedia` (the mic). `localhost` is the only
   http exception — that's why the local `node serve.mjs` works but a LAN IP won't.
-- Fonts load from Google Fonts (first load needs network; falls back to system
-  fonts offline). Everything else is cached by the service worker for offline use.
+- Fonts are self-hosted (`web/fonts/*.woff2`) — no external requests, so first load
+  works fully offline. Everything else is precached by the service worker
+  (stale-while-revalidate; old caches are purged on activate) for offline use.
 - `serve.mjs` at the project root is only for local desktop testing; it is **not**
   part of the deploy.

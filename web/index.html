@@ -97,7 +97,7 @@
   </main>
 
   <script>
-    // Register the service worker (network-first: always fresh online, works offline).
+    // Register the service worker (offline-first: precached shell, stale-while-revalidate).
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
     }

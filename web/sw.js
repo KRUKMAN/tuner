@@ -36,6 +36,10 @@ const CORE_ASSETS = [
   './icons/icon-512.png',
 ];
 
+// INVARIANT: skipWaiting() + clients.claim() let a new SW take over an open page.
+// That is safe only because app.js uses static top-level imports exclusively — a
+// running page never fetches more code. If a future package adds a dynamic import(),
+// it must also add an update/refresh flow (or drop skipWaiting + claim).
 self.addEventListener('install', (e) => {
   e.waitUntil(
     caches.open(CACHE)
@@ -73,13 +77,17 @@ self.addEventListener('fetch', (e) => {
         .then((res) => {
           if (res && res.ok) {
             const copy = res.clone();
-            caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
+            // Chain the write so waitUntil covers it; never fail the response on a cache error.
+            return caches.open(CACHE)
+              .then((c) => c.put(req, copy))
+              .catch(() => {})
+              .then(() => res);
           }
           return res;
         })
         .catch(() => null);
       if (cached) e.waitUntil(network); // keep the SW alive for the background refresh
-      return cached || network.then((r) => r || caches.match('./index.html'));
+      return cached || network.then((r) => r || Response.error());
     })
   );
 });

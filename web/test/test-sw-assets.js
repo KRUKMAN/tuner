@@ -7,9 +7,12 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join, relative, sep, extname } from 'node:path';
 
 const WEB = join(dirname(fileURLToPath(import.meta.url)), '..'); // web/
-const RUNTIME_EXT = new Set(['.html', '.css', '.js', '.webmanifest', '.woff2', '.png']);
+// Extensions that ship to the browser at runtime. IMPORTANT: extend this set when
+// a new shipped asset type is introduced, or that asset silently escapes the guard.
+const RUNTIME_EXT = new Set(['.html', '.css', '.js', '.webmanifest', '.woff2', '.png', '.svg', '.ico', '.json']);
 const EXCLUDE_DIRS = new Set(['test']);
-const EXCLUDE_FILES = new Set(['sw.js']);
+// package.json is tooling config, not a shipped runtime asset.
+const EXCLUDE_FILES = new Set(['sw.js', 'package.json']);
 
 function walk(dir, out = []) {
   for (const name of readdirSync(dir)) {
@@ -27,15 +30,41 @@ function toRel(full) {
   return './' + relative(WEB, full).split(sep).join('/');
 }
 
-function extractCoreAssets(swText) {
+export function extractCoreAssets(swText) {
   const m = swText.match(/CORE_ASSETS\s*=\s*\[([\s\S]*?)\]/);
   if (!m) return null;
-  const items = m[1].match(/['"]([^'"]+)['"]/g) || [];
+  // Strip comments first: a commented-out entry is NOT precached at runtime,
+  // so counting it as "listed" would let the guard pass on a real regression.
+  const body = m[1].replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  const items = body.match(/['"]([^'"]+)['"]/g) || [];
   return items.map((s) => s.slice(1, -1));
 }
 
 /** Registers and runs the service-worker asset-list guard suite. */
 export default function run() {
+  suite('sw: extractCoreAssets ignores commented-out entries', () => {
+    const lineCommented = [
+      "const CORE_ASSETS = [",
+      "  './',",
+      "  './index.html',",
+      "  // './js/app.js',",
+      "  './css/styles.css',",
+      "];",
+    ].join('\n');
+    assert(
+      extractCoreAssets(lineCommented).join(',') === "./,./index.html,./css/styles.css",
+      'line-commented entry is not counted as listed',
+    );
+
+    const blockCommented = "const CORE_ASSETS = [\n  './a.js', /* './b.js', */ './c.js',\n];";
+    assert(
+      extractCoreAssets(blockCommented).join(',') === './a.js,./c.js',
+      'block-commented entry is not counted as listed',
+    );
+
+    assert(extractCoreAssets('no array here') === null, 'returns null when CORE_ASSETS is absent');
+  });
+
   suite('sw: CORE_ASSETS covers every shipped runtime asset', () => {
     const swText = readFileSync(join(WEB, 'sw.js'), 'utf8');
     const listed = extractCoreAssets(swText);
