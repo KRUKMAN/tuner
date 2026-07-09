@@ -18,7 +18,7 @@ export class Controls {
    * @param {() => void} cb.onAuto Header AUTO/PINNED button while the mic is running: unpin.
    * @param {(index:number|null) => void} cb.onToneToggle Speaker button: play (index) or stop (null).
    * @param {(theme:'dark'|'light') => void} cb.onThemeToggle
-   * @param {(midiArray:number[], name:string, id:string|null) => void} cb.onCustomSave
+   * @param {(midiArray:number[], name:string, id:string|null, instrument:string) => void} cb.onCustomSave
    * @param {(id:string) => void} cb.onCustomDelete
    */
   constructor(doc, cb) {
@@ -249,6 +249,13 @@ export class Controls {
       pick.addEventListener('click', () => { this.cb.onTuningChange(t.id); this.closeSheet(); });
       item.appendChild(pick);
       if (isCustom) {
+        const edit = doc.createElement('button');
+        edit.type = 'button';
+        edit.className = 'tuning-edit';
+        edit.textContent = '✎';
+        edit.title = 'Edit tuning';
+        edit.addEventListener('click', (e) => { e.stopPropagation(); this._openEditor(t.strings.slice(), t.id, t.name); });
+        item.appendChild(edit);
         const del = doc.createElement('button');
         del.type = 'button';
         del.className = 'tuning-del';
@@ -328,16 +335,19 @@ export class Controls {
 
   /* ---------- custom tuning editor ---------- */
 
-  _openEditor(seed) {
-    // seed from the current tuning (so "tweak this preset" is easy)
+  _openEditor(seed, id, name) {
+    // seed from the passed strings (edit / tweak-preset), else the current tuning.
     this._editMidis = (seed || (this._tuning ? this._tuning.strings.slice() : [40, 45, 50, 55, 59, 64])).slice();
-    this._editId = null;
+    this._editId = id || null;               // set → Save upserts the existing custom (edit-in-place)
+    this._editSeedName = name || null;
     this.sheetMain.hidden = true;
     this.sheetEditor.hidden = false;
-    this._renderEditor();
+    this._buildEditor();
   }
 
-  _renderEditor() {
+  /** Build the editor shell ONCE. Only the string rows re-render on edits, so the
+   *  name <input> keeps its value/focus (fixes the "typed name lost on nudge" bug). */
+  _buildEditor() {
     const doc = this.doc;
     const ed = this.sheetEditor;
     ed.innerHTML = '';
@@ -348,51 +358,40 @@ export class Controls {
     back.type = 'button'; back.className = 'editor-back'; back.textContent = '‹ Back';
     back.addEventListener('click', () => this._showMain());
     const title = doc.createElement('span');
-    title.className = 'editor-title'; title.textContent = 'Custom tuning';
+    title.className = 'editor-title';
+    title.textContent = this._editId ? 'Edit tuning' : 'Custom tuning';
     head.appendChild(back); head.appendChild(title);
     ed.appendChild(head);
 
-    // string-count segmented control
+    // string-count stepper (1–8)
     const countRow = doc.createElement('div');
-    countRow.className = 'seg count-seg';
-    [4, 5, 6, 7].forEach((n) => {
-      const b = doc.createElement('button');
-      b.type = 'button';
-      b.className = 'seg-btn' + (this._editMidis.length === n ? ' is-on' : '');
-      b.textContent = String(n);
-      b.addEventListener('click', () => this._setStringCount(n));
-      countRow.appendChild(b);
-    });
+    countRow.className = 'editor-count-row';
+    this._countMinus = doc.createElement('button');
+    this._countMinus.type = 'button'; this._countMinus.className = 'a4-step'; this._countMinus.textContent = '−';
+    this._countMinus.addEventListener('click', () => this._stepCount(-1));
+    this._countLabel = doc.createElement('span');
+    this._countLabel.className = 'editor-count';
+    this._countPlus = doc.createElement('button');
+    this._countPlus.type = 'button'; this._countPlus.className = 'a4-step'; this._countPlus.textContent = '+';
+    this._countPlus.addEventListener('click', () => this._stepCount(+1));
+    countRow.appendChild(this._countMinus);
+    countRow.appendChild(this._countLabel);
+    countRow.appendChild(this._countPlus);
     ed.appendChild(countRow);
 
-    // per-string rows (low string at top)
-    const rows = doc.createElement('div');
-    rows.className = 'editor-rows';
-    this._editMidis.forEach((midi, i) => {
-      const row = doc.createElement('div');
-      row.className = 'editor-row';
-      const minus = doc.createElement('button');
-      minus.type = 'button'; minus.className = 'a4-step'; minus.textContent = '−';
-      minus.addEventListener('click', () => this._nudge(i, -1));
-      const label = doc.createElement('div');
-      label.className = 'editor-note';
-      const info = midiToName(midi);
-      label.textContent = `${info.name}${info.octave} · ${frequencyFromMidi(midi, this._a4).toFixed(1)} Hz`;
-      const plus = doc.createElement('button');
-      plus.type = 'button'; plus.className = 'a4-step'; plus.textContent = '+';
-      plus.addEventListener('click', () => this._nudge(i, +1));
-      row.appendChild(minus); row.appendChild(label); row.appendChild(plus);
-      rows.appendChild(row);
-    });
-    ed.appendChild(rows);
+    // per-string rows (rebuilt by _renderRows on count change)
+    this._elRows = doc.createElement('div');
+    this._elRows.className = 'editor-rows';
+    ed.appendChild(this._elRows);
 
-    // name + save/cancel
+    // name — lives OUTSIDE the re-rendered rows, so it survives every edit
     const nameWrap = doc.createElement('div');
     nameWrap.className = 'editor-name';
-    const input = doc.createElement('input');
-    input.type = 'text'; input.maxLength = 24; input.id = 'customName';
-    input.placeholder = 'Name'; input.value = `Custom ${this._customs.length + 1}`;
-    nameWrap.appendChild(input);
+    this._nameInput = doc.createElement('input');
+    this._nameInput.type = 'text'; this._nameInput.maxLength = 24; this._nameInput.id = 'customName';
+    this._nameInput.placeholder = 'Name';
+    this._nameInput.value = this._editSeedName || `Custom ${this._customs.length + 1}`;
+    nameWrap.appendChild(this._nameInput);
     ed.appendChild(nameWrap);
 
     const actions = doc.createElement('div');
@@ -403,12 +402,85 @@ export class Controls {
     const save = doc.createElement('button');
     save.type = 'button'; save.className = 'sheet-done'; save.textContent = 'Save tuning';
     save.addEventListener('click', () => {
-      const nm = (input.value || '').trim() || `Custom ${this._customs.length + 1}`;
-      this.cb.onCustomSave(this._editMidis.slice(), nm, this._editId);
+      const nm = (this._nameInput.value || '').trim() || `Custom ${this._customs.length + 1}`;
+      this.cb.onCustomSave(this._editMidis.slice(), nm, this._editId, this._instrument);
       this.closeSheet();
     });
     actions.appendChild(cancel); actions.appendChild(save);
     ed.appendChild(actions);
+
+    this._renderRows();
+  }
+
+  /** Rebuild only the string rows (called when the string count changes). */
+  _renderRows() {
+    const doc = this.doc;
+    this._elRows.innerHTML = '';
+    this._editMidis.forEach((midi, i) => {
+      const row = doc.createElement('div');
+      row.className = 'editor-row';
+
+      const minus = doc.createElement('button');
+      minus.type = 'button'; minus.className = 'a4-step'; minus.textContent = '−';
+      minus.addEventListener('click', () => this._nudge(i, -1));
+
+      const noteSel = doc.createElement('select');
+      noteSel.className = 'editor-pick editor-note-sel';
+      for (let pc = 0; pc < 12; pc++) {
+        const o = doc.createElement('option');
+        o.value = String(pc); o.textContent = midiToName(pc).name;   // C, C#, D, … B
+        noteSel.appendChild(o);
+      }
+      noteSel.addEventListener('change', () => this._setFromPickers(i));
+
+      const octSel = doc.createElement('select');
+      octSel.className = 'editor-pick editor-oct-sel';
+      for (let oct = 0; oct <= 5; oct++) {                            // A0..E5 span octaves 0..5
+        const o = doc.createElement('option');
+        o.value = String(oct); o.textContent = String(oct);
+        octSel.appendChild(o);
+      }
+      octSel.addEventListener('change', () => this._setFromPickers(i));
+
+      const hz = doc.createElement('span');
+      hz.className = 'editor-hz';
+
+      const plus = doc.createElement('button');
+      plus.type = 'button'; plus.className = 'a4-step'; plus.textContent = '+';
+      plus.addEventListener('click', () => this._nudge(i, +1));
+
+      row.appendChild(minus);
+      row.appendChild(noteSel);
+      row.appendChild(octSel);
+      row.appendChild(hz);
+      row.appendChild(plus);
+      this._elRows.appendChild(row);
+      this._updateRow(i);
+    });
+    this._updateCountUI();
+  }
+
+  /** Sync one row's pickers + Hz label to _editMidis[i] in place (preserves focus). */
+  _updateRow(i) {
+    const row = this._elRows.children[i];
+    if (!row) return;
+    const midi = this._editMidis[i];
+    row.querySelector('.editor-note-sel').value = String(((midi % 12) + 12) % 12);
+    row.querySelector('.editor-oct-sel').value = String(Math.floor(midi / 12) - 1);
+    const info = midiToName(midi);
+    row.querySelector('.editor-hz').textContent =
+      `${info.name}${info.octave} · ${frequencyFromMidi(midi, this._a4).toFixed(1)} Hz`;
+  }
+
+  _updateCountUI() {
+    const n = this._editMidis.length;
+    this._countLabel.textContent = n === 1 ? '1 string' : `${n} strings`;
+    this._countMinus.disabled = n <= 1;
+    this._countPlus.disabled = n >= 8;
+  }
+
+  _stepCount(delta) {
+    this._setStringCount(Math.min(8, Math.max(1, this._editMidis.length + delta)));
   }
 
   _setStringCount(n) {
@@ -420,16 +492,24 @@ export class Controls {
         this._editMidis.unshift(Math.max(21, this._editMidis[0] - 5));
       }
     } else {
-      // shrink from the low side
+      // shrink from the low side (keep the highest n)
       this._editMidis = this._editMidis.slice(cur.length - n);
     }
-    this._renderEditor();
+    this._renderRows();
+  }
+
+  _setFromPickers(i) {
+    const row = this._elRows.children[i];
+    if (!row) return;
+    const pc = parseInt(row.querySelector('.editor-note-sel').value, 10);
+    const oct = parseInt(row.querySelector('.editor-oct-sel').value, 10);
+    this._editMidis[i] = Math.min(76, Math.max(21, (oct + 1) * 12 + pc));
+    this._updateRow(i);
   }
 
   _nudge(i, delta) {
-    const m = Math.min(76, Math.max(21, this._editMidis[i] + delta));
-    this._editMidis[i] = m;
-    this._renderEditor();
+    this._editMidis[i] = Math.min(76, Math.max(21, this._editMidis[i] + delta));
+    this._updateRow(i);
   }
 
   /* ---------- mic / status ---------- */
