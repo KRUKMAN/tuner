@@ -753,6 +753,7 @@ body {
   .dot, .str.is-playing, .tone-btn.is-playing { animation: none; }
   .note-swap { animation: none; }
   .in-tune-snap { animation: none; }
+  .sheet { animation: none; }
   .note-main, .note-state, .note-sub { transition: opacity 120ms linear; }
   .dial-indicator, .dial-progress { transition: fill 300ms ease, stroke 300ms ease; }
 }

@@ -14,6 +14,7 @@
 // change.
 
 import { CONFIG } from '../config.js';
+import { prefersReducedMotion } from './motion.js';
 
 /**
  * Pure phase-accumulation step for one frame.
@@ -82,6 +83,18 @@ export class Strobe {
    */
   render(ds, nowMs) {
     const active = ds.status === 'active' || ds.status === 'hold';
+    const ctx = this.ctx;
+
+    if (prefersReducedMotion()) {
+      // Drop any accumulated elapsed-time gap so drift doesn't resume with one
+      // large jump if the OS setting is turned off again later (same idiom as
+      // reset(), called when the strobe view is hidden/shown).
+      this._lastMs = null;
+      ctx.clearRect(0, 0, this.w, this.h);
+      if (active) this._drawStatic(ds);
+      return;
+    }
+
     const dtSec = this._lastMs == null ? 0 : Math.max(0, (nowMs - this._lastMs) / 1000);
     this._lastMs = nowMs;
 
@@ -91,7 +104,6 @@ export class Strobe {
       this._phase = ((this._phase + delta) % spacing + spacing) % spacing;
     }
 
-    const ctx = this.ctx;
     ctx.clearRect(0, 0, this.w, this.h);
     if (!active) return;
 
@@ -101,5 +113,15 @@ export class Strobe {
     for (let x = -spacing + this._phase; x < this.w + spacing; x += spacing) {
       ctx.fillRect(x, bandY, spacing / 2, bandH);
     }
+  }
+
+  /** Reduced-motion fallback: a single non-animating mark, centred (no drift). */
+  _drawStatic(ds) {
+    const ctx = this.ctx;
+    const bandH = this.h * CONFIG.strobeBandHeightFrac;
+    const bandY = (this.h - bandH) / 2;
+    const spacing = this.w / this.stripeCount;
+    ctx.fillStyle = ds.inTune ? this._colors.accentIn : this._colors.accent;
+    ctx.fillRect(this.w / 2 - spacing / 4, bandY, spacing / 2, bandH);
   }
 }

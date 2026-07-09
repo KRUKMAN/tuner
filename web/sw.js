@@ -36,6 +36,7 @@ const CORE_ASSETS = [
   './js/ui/focus-order.js',
   './js/ui/graph.js',
   './js/ui/metronome-view.js',
+  './js/ui/motion.js',
   './js/ui/note-status.js',
   './js/ui/strobe.js',
   './icons/favicon-32.png',
