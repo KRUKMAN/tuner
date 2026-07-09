@@ -118,6 +118,16 @@ export const CONFIG = deepFreeze({
   strobeBandHeightFrac: 0.22,     // stripe band height as a fraction of the canvas size
   displayModeDefault: 'dial',     // 'dial' | 'strobe'
 
+  // --- Package D: in-tune feedback (haptic / dial snap / chime) --------------
+  inTuneFeedbackDebounceMs: 80,   // ds.inTune must hold this long before feedback fires
+  hapticVibrateMs: 30,
+  hapticDefaultOn: true,
+  chimeDefaultOn: false,
+  chimeFrequencyHz: 1046.5,       // C6 — soft, distinct from any tuning target
+  chimeGain: 0.18,                // peak linear gain of the chime envelope
+  chimeAttackMs: 15,
+  chimeReleaseMs: 220,
+
   modes: {
     guitar: {
       windowSize: 2048,

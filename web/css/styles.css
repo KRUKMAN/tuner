@@ -246,6 +246,7 @@ body {
               cy 120ms cubic-bezier(0.33, 1, 0.68, 1),
               fill 300ms ease;
 }
+.in-tune-snap { animation: tonepulse 260ms ease-in-out 1; }
 
 /* ---------- in-tune recolor ---------- */
 .in-tune .note-state    { color: var(--accent-in); }
@@ -577,6 +578,9 @@ body {
 }
 .a4-step:active { transform: scale(0.95); }
 .a4-display { font: 600 22px 'JetBrains Mono', monospace; min-width: 120px; text-align: center; }
+.feedback-row { display: flex; align-items: center; justify-content: space-between; margin: 10px 0; }
+.feedback-label { font: 500 14px 'Space Grotesk', sans-serif; color: var(--ink); }
+.seg-sm .seg-btn { padding: 6px 14px; font: 500 13px 'Space Grotesk', sans-serif; }
 .sheet-done {
   width: 100%;
   margin-top: 22px;
@@ -607,6 +611,7 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .dot, .str.is-playing, .tone-btn.is-playing { animation: none; }
   .note-swap { animation: none; }
+  .in-tune-snap { animation: none; }
   .note-main, .note-state, .note-sub { transition: opacity 120ms linear; }
   .dial-indicator, .dial-progress { transition: fill 300ms ease, stroke 300ms ease; }
 }

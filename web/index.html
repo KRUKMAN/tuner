@@ -96,6 +96,21 @@
           <button class="seg-btn is-on" data-display="dial" type="button">Dial</button>
           <button class="seg-btn" data-display="strobe" type="button">Strobe</button>
         </div>
+        <div class="sheet-section-title">In-tune feedback</div>
+        <div class="sheet-row feedback-row">
+          <span class="feedback-label">Haptic</span>
+          <div class="seg seg-sm" id="hapticSeg">
+            <button class="seg-btn is-on" data-on="1" type="button">On</button>
+            <button class="seg-btn" data-on="0" type="button">Off</button>
+          </div>
+        </div>
+        <div class="sheet-row feedback-row">
+          <span class="feedback-label">Chime</span>
+          <div class="seg seg-sm" id="chimeSeg">
+            <button class="seg-btn" data-on="1" type="button">On</button>
+            <button class="seg-btn is-on" data-on="0" type="button">Off</button>
+          </div>
+        </div>
         <button class="sheet-done" id="sheetDone" type="button">Done</button>
       </div>
       <div id="sheetEditor" hidden><!-- custom tuning editor injected --></div>

@@ -19,6 +19,8 @@ export class Controls {
    * @param {(index:number|null) => void} cb.onToneToggle Speaker button: play (index) or stop (null).
    * @param {(theme:'dark'|'light') => void} cb.onThemeToggle
    * @param {(mode:'dial'|'strobe') => void} cb.onDisplayModeChange
+   * @param {(on:boolean) => void} cb.onHapticToggle
+   * @param {(on:boolean) => void} cb.onChimeToggle
    * @param {(midiArray:number[], name:string, id:string|null, instrument:string) => void} cb.onCustomSave
    * @param {(id:string) => void} cb.onCustomDelete
    */
@@ -45,6 +47,9 @@ export class Controls {
     this.sheetEditor = this.$('sheetEditor');
     this.tuningList = this.$('tuningList');
     this.displaySeg = this.$('displaySeg');
+    this.dialWrap = this.$('dialWrap');
+    this.hapticSeg = this.$('hapticSeg');
+    this.chimeSeg = this.$('chimeSeg');
 
     this._tuning = null;
     this._a4 = 440;
@@ -96,6 +101,12 @@ export class Controls {
 
     this.displaySeg.querySelectorAll('.seg-btn').forEach((btn) => {
       btn.addEventListener('click', () => cb.onDisplayModeChange(btn.dataset.display));
+    });
+    this.hapticSeg.querySelectorAll('.seg-btn').forEach((btn) => {
+      btn.addEventListener('click', () => cb.onHapticToggle(btn.dataset.on === '1'));
+    });
+    this.chimeSeg.querySelectorAll('.seg-btn').forEach((btn) => {
+      btn.addEventListener('click', () => cb.onChimeToggle(btn.dataset.on === '1'));
     });
   }
 
@@ -333,6 +344,27 @@ export class Controls {
     this.displaySeg.querySelectorAll('.seg-btn').forEach((b) => {
       b.classList.toggle('is-on', b.dataset.display === mode);
     });
+  }
+
+  /** @param {boolean} on */
+  setHaptic(on) {
+    this.hapticSeg.querySelectorAll('.seg-btn').forEach((b) => {
+      b.classList.toggle('is-on', (b.dataset.on === '1') === !!on);
+    });
+  }
+
+  /** @param {boolean} on */
+  setChime(on) {
+    this.chimeSeg.querySelectorAll('.seg-btn').forEach((b) => {
+      b.classList.toggle('is-on', (b.dataset.on === '1') === !!on);
+    });
+  }
+
+  /** One-shot visual "snap" on the in-tune false->true edge; reuses the tonepulse keyframe. */
+  pulseInTune() {
+    this.dialWrap.classList.remove('in-tune-snap');
+    void this.dialWrap.offsetWidth; // restart the animation
+    this.dialWrap.classList.add('in-tune-snap');
   }
 
   setA4(a4) {

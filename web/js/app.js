@@ -10,7 +10,7 @@ import { frequencyFromMidi } from './music/theory.js';
 import { TUNINGS, makeCustomTuning, validateTuningStrings } from './music/tunings.js';
 import { defaultTuningIdFor } from './music/instruments.js';
 import { MicCapture } from './audio/capture.js';
-import { ReferenceTone } from './audio/tone.js';
+import { ReferenceTone, raisedCosineCurve } from './audio/tone.js';
 import { TrailBuffer } from './dsp/trail.js';
 import { Dial } from './ui/dial.js';
 import { Strobe } from './ui/strobe.js';
@@ -31,6 +31,10 @@ const state = {
   lockedString: null,        // pinned string index; null = auto string select
   customTunings: [],         // [{id,name,instrument,strings}]
   displayMode: CONFIG.displayModeDefault,  // 'dial' | 'strobe'
+  haptic: CONFIG.hapticDefaultOn,
+  chime: CONFIG.chimeDefaultOn,
+  inTuneStreakStartMs: null,  // ms timestamp the current in-tune streak started, null when not in tune
+  inTuneFired: false,         // true once feedback has fired for the current streak
 };
 
 /** @type {AudioContext} */ let audioCtx = null;
@@ -109,6 +113,12 @@ function applyTheme(theme) {
   const dm = store.get('tuner-display-mode', null);
   if (dm === 'dial' || dm === 'strobe') state.displayMode = dm;
 })();
+(() => {
+  const h = store.get('tuner-haptic', null);
+  if (typeof h === 'boolean') state.haptic = h;
+  const c = store.get('tuner-chime', null);
+  if (typeof c === 'boolean') state.chime = c;
+})();
 
 /* ---------- restore persisted state ---------- */
 loadCustoms();
@@ -142,6 +152,8 @@ const controls = new Controls(document, {
   onCustomSave: saveCustom,
   onCustomDelete: deleteCustom,
   onDisplayModeChange: setDisplayMode,
+  onHapticToggle: setHaptic,
+  onChimeToggle: setChime,
 });
 
 // initial UI reflects (possibly restored) default state
@@ -151,6 +163,8 @@ controls.setA4(state.a4);
 controls.setTuning(resolveTuning(state.tuningId), state.a4);
 controls.setMicState('idle');
 setDisplayMode(state.displayMode);
+controls.setHaptic(state.haptic);
+controls.setChime(state.chime);
 
 window.addEventListener('resize', () => { graph.resize(); strobe.resize(); });
 
@@ -185,6 +199,8 @@ function buildEngine() {
   stabilizer.setLockedString(state.lockedString);
   trail.clear();
   lastStringIndex = null;
+  state.inTuneStreakStartMs = null;
+  state.inTuneFired = false;
 }
 
 /* ---------- mic lifecycle ---------- */
@@ -302,6 +318,51 @@ function stopTone() {
   controls.setTonePlaying(null);
 }
 
+function setHaptic(on) {
+  state.haptic = !!on;
+  store.set('tuner-haptic', state.haptic);
+  controls.setHaptic(state.haptic);
+}
+
+function setChime(on) {
+  state.chime = !!on;
+  store.set('tuner-chime', state.chime);
+  controls.setChime(state.chime);
+}
+
+/** Fires haptic + a visual dial snap + optional chime; called once per debounced in-tune edge. */
+function triggerInTuneFeedback() {
+  if (state.haptic && navigator.vibrate) {
+    try { navigator.vibrate(CONFIG.hapticVibrateMs); } catch { /* ignore */ }
+  }
+  controls.pulseInTune();
+  if (state.chime) playChime();
+}
+
+/** One-shot soft chime: a raised-cosine attack/release envelope through the master bus. */
+function playChime() {
+  if (!audioCtx || !masterGain) return;
+  const ctx = audioCtx;
+  const now = ctx.currentTime;
+  const osc = ctx.createOscillator();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(CONFIG.chimeFrequencyHz, now);
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0, now);
+  osc.connect(gain);
+  gain.connect(masterGain);
+  const attack = CONFIG.chimeAttackMs / 1000;
+  const release = CONFIG.chimeReleaseMs / 1000;
+  gain.gain.setValueCurveAtTime(raisedCosineCurve(CONFIG.chimeGain, true), now, attack);
+  gain.gain.setValueCurveAtTime(raisedCosineCurve(CONFIG.chimeGain, false), now + attack, release);
+  osc.start(now);
+  osc.stop(now + attack + release);
+  osc.onended = () => {
+    try { osc.disconnect(); } catch { /* ignore */ }
+    try { gain.disconnect(); } catch { /* ignore */ }
+  };
+}
+
 /* ---------- custom tunings ---------- */
 function saveCustom(midiArray, name, id, instrument) {
   const strings = validateTuningStrings(midiArray);
@@ -334,6 +395,20 @@ function loop() {
   const ds = stabilizer.update(frame, now);
 
   const active = ds.status === 'active' || ds.status === 'hold';
+
+  // In-tune feedback: fire once per sustained false->true streak (debounced so
+  // single-frame stabilizer jitter right at the threshold can't retrigger it).
+  if (ds.inTune) {
+    if (state.inTuneStreakStartMs == null) state.inTuneStreakStartMs = now;
+    if (!state.inTuneFired && now - state.inTuneStreakStartMs >= CONFIG.inTuneFeedbackDebounceMs) {
+      state.inTuneFired = true;
+      triggerInTuneFeedback();
+    }
+  } else {
+    state.inTuneStreakStartMs = null;
+    state.inTuneFired = false;
+  }
+
   trail.push(now, active && ds.cents != null ? ds.cents : NaN, ds.confidence, ds.inTune);
   graph.render(trail, now);
   if (state.displayMode === 'strobe') strobe.render(ds, now); else dial.render(ds);
