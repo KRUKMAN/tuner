@@ -84,7 +84,12 @@ export const CONFIG = deepFreeze({
   // --- v2: smarter clarity / onset -------------------------------------
   claritySustain: 0.68,          // relaxed threshold once a note is locked (decaying bass strings)
   sustainLockMs: 250,            // ref must be stable this long before relaxing
-  attackConfirmFrames: 2,        // consecutive good frames before FIRST display
+  attackConfirmFrames: 3,        // median samples required before ANY display. Must be >= 3:
+                                 // median() of 1-2 samples cannot reject an outlier (of 2 it
+                                 // is just their mean), so a pluck's broadband attack transient
+                                 // -- or a frame or two of quasi-periodic room noise -- would
+                                 // otherwise be shown as a full-confidence wrong note.
+  octaveSanityCents: 150,        // history-vs-reading gap that triggers the octave sanity check
 
   // --- v2: confidence (0..1) -------------------------------------------
   confidenceClarityLo: 0.75,     // clarity mapping: 0.75 -> 0

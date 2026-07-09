@@ -242,26 +242,33 @@ export default function run() {
     assert(sustained, "a locked note stays 'active' at clarity 0.72 (relaxed sustain threshold)");
   });
 
-  suite('stabilizer(v2): onset confirmation needs two consecutive good frames', () => {
-    // One good frame then a rejecting frame → never displays.
+  suite('stabilizer(v2): onset confirmation needs attackConfirmFrames consecutive good frames', () => {
+    // attackConfirmFrames was raised 2 -> 3: a 2-sample median is just the mean of the two,
+    // so it cannot reject a pluck's attack transient. Three samples can.
+    assert(CONFIG.attackConfirmFrames >= 3, 'attackConfirmFrames >= 3 so the median can reject one outlier');
+
+    // Good frames separated by a rejecting frame never accumulate into a display.
+    // This is what stops sporadic, quasi-periodic room noise from eventually locking.
     const a = makeStab();
     let t = 0;
     let sawActiveA = false;
-    let ds = a.update(hframe(110, 0.97, -20, 0.98), t); t += DT;
-    if (ds.status === 'active') sawActiveA = true;
-    ds = a.update(dropout(-20), t); t += DT; // rejecting frame breaks the streak
-    if (ds.status === 'active') sawActiveA = true;
-    ds = a.update(hframe(110, 0.97, -20, 0.98), t); t += DT; // fresh streak, still warming
-    if (ds.status === 'active') sawActiveA = true;
-    assert(!sawActiveA, 'a single good frame (streak broken) never reaches active');
+    for (let i = 0; i < 4; i++) {
+      let ds = a.update(hframe(110, 0.97, -20, 0.98), t); t += DT;
+      if (ds.status === 'active') sawActiveA = true;
+      ds = a.update(dropout(-20), t); t += DT; // rejecting frame breaks the streak
+      if (ds.status === 'active') sawActiveA = true;
+    }
+    assert(!sawActiveA, 'good frames broken up by rejects never accumulate into an active display');
 
-    // Two consecutive good frames → active on the 2nd.
+    // Three consecutive good frames → active on the 3rd, not before.
     const b = makeStab();
     t = 0;
     const d0 = b.update(hframe(110, 0.97, -20, 0.98), t); t += DT;
-    const d1 = b.update(hframe(110, 0.97, -20, 0.98), t);
+    const d1 = b.update(hframe(110, 0.97, -20, 0.98), t); t += DT;
+    const d2 = b.update(hframe(110, 0.97, -20, 0.98), t);
     assert(d0.status !== 'active', "first good frame is a warm-up (not 'active')");
-    assert(d1.status === 'active', "second consecutive good frame → 'active'");
+    assert(d1.status !== 'active', "second good frame is still a warm-up (not 'active')");
+    assert(d2.status === 'active', "third consecutive good frame → 'active'");
   });
 
   suite('stabilizer(v2): confidence decays monotonically through the hold', () => {
@@ -382,6 +389,69 @@ export default function run() {
     assert(ds.status === 'active', `rescued note reaches 'active' (got '${ds.status}')`);
     assert(ds.midi === 33, `octave-snapped down to A1 midi 33, NOT A2 45 (got ${ds.midi})`);
     assert(ds.stringIndex === 1, `A string index 1 (got ${ds.stringIndex})`);
+  });
+
+  suite('stabilizer(v2): an attack transient is never displayed as a confident note', () => {
+    // REGRESSION (found on real recorded plucks). A real pluck's first ~15-30 ms is
+    // broadband and non-periodic. With a 2-sample median (which is just their mean) that
+    // transient became the very first thing shown, at confidence 1.00 and hundreds of
+    // cents off. Nothing may display until the median can reject a single outlier.
+    const s = makeStab();
+    let t = 0;
+    let ds;
+
+    ds = s.update(hframe(600, 0.99, -20, 0.99), t); t += DT;   // the transient
+    assert(ds.status !== 'active', `transient frame is not displayed (got '${ds.status}')`);
+
+    ds = s.update(hframe(110, 0.99, -20, 0.99), t); t += DT;
+    assert(ds.status !== 'active', `2nd frame still warming up — median needs 3 (got '${ds.status}')`);
+
+    ds = s.update(hframe(110, 0.99, -20, 0.99), t); t += DT;
+    assert(ds.status === 'active', `displays on the 3rd accepted frame (got '${ds.status}')`);
+    assert(ds.midi === 45, `median rejects the transient → A2 midi 45, not D5 (got ${ds.midi})`);
+  });
+
+  suite('stabilizer(v2): onset protection applies to every note, not just the first', () => {
+    // REGRESSION. The old gate was `goodStreak < attackConfirmFrames && lastGood === null`.
+    // `lastGood` is never cleared after the first note, so every later note displayed
+    // straight off its first accepted frame — a 1-sample "median" is the raw frame itself.
+    const s = makeStab();
+    let t = 0;
+    let ds;
+
+    for (let i = 0; i < 8; i++) { ds = s.update(hframe(110, 0.99, -20, 0.99), t); t += DT; }
+    assert(ds.status === 'active' && ds.midi === 45, 'first note establishes A2');
+
+    // Let the note die: quiet frames past gateReleaseMs + holdMs close the gate and
+    // clear the median history (but NOT lastGood).
+    for (let i = 0; i < 45; i++) { ds = s.update(dropout(-80), t); t += DT; }
+    assert(ds.status === 'silent', `gate closed after silence (got '${ds.status}')`);
+
+    // A new note begins with a transient. It must NOT be displayed.
+    ds = s.update(hframe(600, 0.99, -20, 0.99), t); t += DT;
+    assert(ds.status !== 'active', `transient on a LATER note is not displayed (got '${ds.status}')`);
+    assert(ds.midi !== 74, 'the transient pitch never reaches the display');
+  });
+
+  suite('stabilizer(v2): octave sanity is symmetric (catches subharmonic reads too)', () => {
+    // REGRESSION (found on a real quiet "pp" pluck). The raw detector can lock onto a
+    // SUBHARMONIC of a weak fundamental, reading an octave LOW. The sanity check only
+    // tried f, f/2, f/3 — corrections downward — so a too-low reading survived and, once
+    // it outvoted the median window, flipped the displayed note down an octave.
+    const s = new Stabilizer({ config: CONFIG, a4: 440, tuning: null, lockedString: null });
+    let t = 0;
+    let ds;
+
+    const B3 = 246.94;
+    for (let i = 0; i < 5; i++) { ds = s.update(hframe(B3, 0.99, -20, 0.99), t); t += DT; }
+    assert(ds.midi === 59, `established B3 midi 59 (got ${ds.midi})`);
+
+    // Eight consecutive subharmonic (period x2) frames. Enough to outvote the 5-sample
+    // median AND to clear noteSwitchFrames, so an uncorrected reading really would flip
+    // the displayed note down an octave to B2 (47). Fewer frames pass either way, because
+    // the note-name hysteresis alone absorbs a short excursion.
+    for (let i = 0; i < 8; i++) { ds = s.update(hframe(B3 / 2, 0.99, -20, 0.99), t); t += DT; }
+    assert(ds.midi === 59, `subharmonic reads corrected back up to B3, not B2 47 (got ${ds.midi})`);
   });
 
   suite('stabilizer(v2): legacy fixed-gate path (adaptiveGate:false) still locks', () => {
