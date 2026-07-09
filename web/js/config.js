@@ -99,6 +99,10 @@ export const CONFIG = deepFreeze({
   detectLpfMinHz: 500,           // floor so high strings keep enough harmonics
   harmonicityMin: 0.55,          // reject frames below this (broadband buzz/noise)
   targetSnapCents: 45,           // tuning-mode octave snap window to a target string
+  snapGuardCents: 50,            // only octave-snap a reading this far from EVERY string.
+                                 // Within it the reading IS that string, merely out of
+                                 // tune — relabeling would map a slightly-sharp B3 onto
+                                 // E2, since B3 sits a near-exact twelfth (x3) above E2.
 
   modes: {
     guitar: {

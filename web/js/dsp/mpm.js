@@ -214,10 +214,21 @@ export class MPMDetector {
     // --- Harmonicity: NSDF periodicity at 2x/3x the detected period. ---
     // Broadband noise / fret buzz has weak periodicity at period multiples;
     // a genuinely periodic (even weak-fundamental) note scores high.
+    // Renormalize over the multiples that actually FIT inside the window. For the
+    // lowest bass notes 3*p exceeds N (B0 at 48 kHz: p ~= 1555, 3*p = 4665 > 4096),
+    // so a fixed 0.6/0.4 blend would hard-cap harmonicity at 0.6 -- barely above the
+    // harmonicityMin reject gate -- starving the lowest, hardest-to-tune string of
+    // any headroom. An unavailable term must not drag the score down.
     const p = Math.round(chosen);            // integer period in samples
-    const h2 = (2 * p < N) ? nsdf[2 * p] : 0;
-    const h3 = (3 * p < N) ? nsdf[3 * p] : 0;
-    const harmonicity = Math.max(0, Math.min(1, 0.6 * Math.max(0, h2) + 0.4 * Math.max(0, h3)));
+    const h2 = (2 * p < N) ? Math.max(0, nsdf[2 * p]) : -1;   // -1 === unavailable
+    const h3 = (3 * p < N) ? Math.max(0, nsdf[3 * p]) : -1;
+
+    let harmonicity;
+    if (h2 >= 0 && h3 >= 0) harmonicity = 0.6 * h2 + 0.4 * h3;
+    else if (h2 >= 0) harmonicity = h2;
+    else if (h3 >= 0) harmonicity = h3;
+    else harmonicity = 0;
+    harmonicity = Math.max(0, Math.min(1, harmonicity));
 
     return { frequency, clarity, harmonicity, rmsDb };
   }

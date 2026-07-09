@@ -339,6 +339,51 @@ export default function run() {
     assert(ds.stringIndex === 2, `D string index 2 (got ${ds.stringIndex})`);
   });
 
+  suite('stabilizer(v2): octave snap must NOT relabel a slightly-sharp string', () => {
+    // REGRESSION. B3 sits a near-exact perfect twelfth (x3) above E2: E2*3 = 247.23 Hz
+    // vs B3 = 246.94 Hz, only ~2 cents apart. An unguarded snap divides a slightly-sharp
+    // B3 by 3, lands ~6 cents from E2, decides that beats the +8 cents to B3 itself, and
+    // confidently displays the WRONG string. Identical trap: E4 is a twelfth above A2.
+    // CONFIG.snapGuardCents blocks the snap whenever f is already near a string.
+    const tuning = [40, 45, 50, 55, 59, 64]; // guitar standard
+    const detuned = (midi, cents) =>
+      440 * Math.pow(2, (midi - 69) / 12) * Math.pow(2, cents / 1200);
+
+    const b3 = new Stabilizer({ config: CONFIG, a4: 440, tuning, lockedString: null });
+    let t = 0;
+    let ds;
+    for (let i = 0; i < 12; i++) { ds = b3.update(hframe(detuned(59, 8), 0.99, -20, 0.99), t); t += DT; }
+    assert(ds.midi === 59, `B3 +8c stays B3 (midi 59), NOT E2 (40) — got ${ds.midi}`);
+    assert(ds.noteName === 'B' && ds.octave === 3, `B3 +8c reads B3 (got ${ds.noteName}${ds.octave})`);
+    assert(ds.stringIndex === 4, `B3 +8c highlights the B string (index 4), got ${ds.stringIndex}`);
+    assertClose(ds.cents, 8, 2, 'B3 +8c shows ≈ +8 cents (not ≈ +6.5 against E2)');
+
+    const e4 = new Stabilizer({ config: CONFIG, a4: 440, tuning, lockedString: null });
+    t = 0;
+    for (let i = 0; i < 12; i++) { ds = e4.update(hframe(detuned(64, 8), 0.99, -20, 0.99), t); t += DT; }
+    assert(ds.midi === 64, `E4 +8c stays E4 (midi 64), NOT A2 (45) — got ${ds.midi}`);
+    assert(ds.stringIndex === 5, `E4 +8c highlights the high-E string (index 5), got ${ds.stringIndex}`);
+
+    // A badly-flat string must still read as itself, not snap to a neighbour.
+    const flat = new Stabilizer({ config: CONFIG, a4: 440, tuning, lockedString: null });
+    t = 0;
+    for (let i = 0; i < 12; i++) { ds = flat.update(hframe(detuned(59, -45), 0.99, -20, 0.99), t); t += DT; }
+    assert(ds.midi === 59, `B3 -45c still reads B3 (got ${ds.midi})`);
+  });
+
+  suite('stabilizer(v2): guarded snap still rescues a genuine octave error', () => {
+    // Bass 4-string. The detector reports A2 (110 Hz) — an octave-up error off the A1
+    // string (55 Hz). 110 Hz sits ~200 cents from the nearest string (G2), well outside
+    // snapGuardCents, so the snap is permitted and pulls it back down to A1.
+    const s = new Stabilizer({ config: CONFIG, a4: 440, tuning: [28, 33, 38, 43], lockedString: null });
+    let t = 0;
+    let ds;
+    for (let i = 0; i < 6; i++) { ds = s.update(hframe(110, 0.95, -20, 0.9), t); t += DT; }
+    assert(ds.status === 'active', `rescued note reaches 'active' (got '${ds.status}')`);
+    assert(ds.midi === 33, `octave-snapped down to A1 midi 33, NOT A2 45 (got ${ds.midi})`);
+    assert(ds.stringIndex === 1, `A string index 1 (got ${ds.stringIndex})`);
+  });
+
   suite('stabilizer(v2): legacy fixed-gate path (adaptiveGate:false) still locks', () => {
     const legacyCfg = { ...CONFIG, adaptiveGate: false };
     const s = new Stabilizer({ config: legacyCfg, a4: 440, tuning: null, lockedString: null });

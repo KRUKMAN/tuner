@@ -192,21 +192,30 @@ export class Stabilizer {
     // --- Step 3a: target-aware octave snap (tuning mode, no history) ----
     let f = frame.frequency;
     if (this.tuning) {
-      // Snap to the octave of f that lands CLOSEST to a target string. Candidates
-      // are ordered low->high so ties resolve toward the fundamental (weak-
-      // fundamental bass strings octave-error UP: A1 55Hz read as A2 110Hz -> we
-      // pull it back to A1). The generous window lets an out-of-tune string still
-      // resolve to its intended string+octave while showing how far off it is.
-      const cands = [f / 3, f / 2, f, f * 2];
-      let bestF = f;
-      let bestAbs = Infinity;
-      for (let i = 0; i < cands.length; i++) {
-        const cand = cands[i];
-        if (cand < 1) continue;
-        const a = Math.abs(nearestString(cand, this.tuning, this.a4).cents);
-        if (a < bestAbs) { bestAbs = a; bestF = cand; }
+      // GUARD FIRST: only octave-correct a reading that is clearly not any string.
+      // If f already lands within snapGuardCents of a string, that reading IS that
+      // string -- merely out of tune -- and must never be relabeled. Without this,
+      // a slightly-sharp B3 gets divided by 3 onto E2 (B3 sits a near-exact perfect
+      // twelfth above E2: E2*3 = 247.23 Hz vs B3 = 246.94 Hz, ~2 cents apart), so the
+      // tuner confidently displays the wrong string. Same trap for E4 (x3 above A2).
+      const direct = nearestString(f, this.tuning, this.a4);
+      if (Math.abs(direct.cents) > c.snapGuardCents) {
+        // Snap to the octave of f that lands CLOSEST to a target string. Candidates
+        // are ordered low->high so ties resolve toward the fundamental (weak-
+        // fundamental bass strings octave-error UP: A1 55Hz read as A2 110Hz -> we
+        // pull it back to A1). The generous window lets an out-of-tune string still
+        // resolve to its intended string+octave while showing how far off it is.
+        const cands = [f / 3, f / 2, f, f * 2];
+        let bestF = f;
+        let bestAbs = Infinity;
+        for (let i = 0; i < cands.length; i++) {
+          const cand = cands[i];
+          if (cand < 1) continue;
+          const a = Math.abs(nearestString(cand, this.tuning, this.a4).cents);
+          if (a < bestAbs) { bestAbs = a; bestF = cand; }
+        }
+        if (bestAbs <= c.targetSnapCents) f = bestF;
       }
-      if (bestAbs <= c.targetSnapCents) f = bestF;
     }
 
     // --- Step 3b: history-based octave sanity (second line of defense) --
