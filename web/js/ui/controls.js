@@ -6,6 +6,11 @@ import { midiToName, frequencyFromMidi } from '../music/theory.js';
 import { tuningsFor } from '../music/tunings.js';
 import { INSTRUMENTS } from '../music/instruments.js';
 import { stateLabelFor, announcementFor } from './note-status.js';
+import { nextFocusIndex } from './focus-order.js';
+
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), ' +
+  'textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 export class Controls {
   /**
@@ -66,10 +71,27 @@ export class Controls {
     this._blankTimer = null;
     this._lastNoteKey = null;
     this._announceKey = null;
+    this._preOpenFocus = null;
 
     // custom editor working state
     this._editMidis = [];
     this._editId = null;
+
+    this._onSheetKeydown = (e) => {
+      if (this.sheet.hidden) return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        this.closeSheet();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      const els = this._getFocusable();
+      const current = els.indexOf(this.doc.activeElement);
+      const next = nextFocusIndex(els.length, current, e.shiftKey);
+      if (next === -1) return; // nothing focusable — let the browser do its default thing
+      e.preventDefault();
+      els[next].focus();
+    };
 
     this._renderInstruments();
     this._wire();
@@ -392,9 +414,48 @@ export class Controls {
     if (this._tuning) this.setTuning(this._tuning, a4);
   }
 
-  openSheet() { this.scrim.hidden = false; this.sheet.hidden = false; this._showMain(); }
-  closeSheet() { this.scrim.hidden = true; this.sheet.hidden = true; }
-  _showMain() { this.sheetMain.hidden = false; this.sheetEditor.hidden = true; }
+  /** The sheet panel currently shown: main list or the custom-tuning editor. */
+  _activePanel() {
+    return this.sheetEditor.hidden ? this.sheetMain : this.sheetEditor;
+  }
+
+  /** Focusable elements in the CURRENTLY VISIBLE panel, re-queried every call so
+   *  it stays correct after the tuning list / editor rows re-render. */
+  _getFocusable() {
+    return Array.from(this._activePanel().querySelectorAll(FOCUSABLE_SELECTOR))
+      .filter((el) => !el.closest('[hidden]'));
+  }
+
+  _focusFirstInPanel() {
+    const els = this._getFocusable();
+    if (els.length) els[0].focus();
+    else this.sheet.focus(); // fallback: the sheet itself (tabindex="-1")
+  }
+
+  openSheet() {
+    this._preOpenFocus = this.doc.activeElement;
+    this.scrim.hidden = false;
+    this.sheet.hidden = false;
+    this._showMain();
+    this.doc.addEventListener('keydown', this._onSheetKeydown);
+  }
+
+  closeSheet() {
+    this.scrim.hidden = true;
+    this.sheet.hidden = true;
+    this.doc.removeEventListener('keydown', this._onSheetKeydown);
+    const trigger = this._preOpenFocus;
+    this._preOpenFocus = null;
+    if (trigger && this.doc.contains(trigger) && typeof trigger.focus === 'function') {
+      trigger.focus();
+    }
+  }
+
+  _showMain() {
+    this.sheetMain.hidden = false;
+    this.sheetEditor.hidden = true;
+    this._focusFirstInPanel();
+  }
 
   /* ---------- custom tuning editor ---------- */
 
@@ -406,6 +467,7 @@ export class Controls {
     this.sheetMain.hidden = true;
     this.sheetEditor.hidden = false;
     this._buildEditor();
+    this._focusFirstInPanel();
   }
 
   /** Build the editor shell ONCE. Only the string rows re-render on edits, so the
