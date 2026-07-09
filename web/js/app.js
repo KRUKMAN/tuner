@@ -8,6 +8,7 @@ import { createPreFilter } from './dsp/filters.js';
 import { Stabilizer } from './dsp/stabilizer.js';
 import { frequencyFromMidi } from './music/theory.js';
 import { TUNINGS, makeCustomTuning, validateTuningStrings } from './music/tunings.js';
+import { defaultTuningIdFor } from './music/instruments.js';
 import { MicCapture } from './audio/capture.js';
 import { ReferenceTone } from './audio/tone.js';
 import { TrailBuffer } from './dsp/trail.js';
@@ -15,7 +16,6 @@ import { Dial } from './ui/dial.js';
 import { Graph } from './ui/graph.js';
 import { Controls } from './ui/controls.js';
 
-const DEFAULT_TUNING = { guitar: 'guitar-standard', bass: 'bass-4-standard' };
 const LS_CUSTOM = 'tuner-custom-tunings';
 const LS_LAST = 'tuner-last-tuning';
 
@@ -239,7 +239,7 @@ function handleAuto() {
 
 function changeInstrument(instrument) {
   state.instrument = instrument;
-  selectTuning(DEFAULT_TUNING[instrument]);
+  selectTuning(defaultTuningIdFor(instrument));
   controls.setInstrument(instrument);
 }
 
@@ -276,10 +276,10 @@ function stopTone() {
 }
 
 /* ---------- custom tunings ---------- */
-function saveCustom(midiArray, name, id) {
+function saveCustom(midiArray, name, id, instrument) {
   const strings = validateTuningStrings(midiArray);
   const tid = id || 'custom-' + Date.now();
-  const t = makeCustomTuning(strings, (name || 'Custom').slice(0, 24), tid);
+  const t = makeCustomTuning(strings, (name || 'Custom').slice(0, 24), tid, instrument);
   const i = state.customTunings.findIndex((x) => x.id === tid);
   if (i >= 0) state.customTunings[i] = t; else state.customTunings.push(t);
   saveCustoms();
@@ -290,7 +290,7 @@ function deleteCustom(id) {
   state.customTunings = state.customTunings.filter((t) => t.id !== id);
   saveCustoms();
   controls.setCustomTunings(state.customTunings);
-  if (state.tuningId === id) selectTuning(DEFAULT_TUNING[state.instrument]);
+  if (state.tuningId === id) selectTuning(defaultTuningIdFor(state.instrument));
 }
 
 /* ---------- render loop ---------- */
