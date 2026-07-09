@@ -144,4 +144,42 @@ export const CONFIG = deepFreeze({
       lpfHz: 1000,
     },
   },
+
+  // --- Package E: metronome ------------------------------------------------
+  // Every metronome numeric parameter lives here (spec §1.3, §7.5). No inline
+  // literals in meter.js / metronome.js / metronome-view.js.
+  metronome: {
+    bpmMin: 30,
+    bpmMax: 300,
+    bpmDefault: 120,
+    beatCountMin: 1,             // a bar is an array of beats; 1..16 beats
+    beatCountMax: 16,
+    subdivisions: [1, 2, 3, 4],  // clicks per beat; first = beat accent, rest = 'sub'
+
+    // tap tempo (pure helper meter.tapTempoBpm)
+    tapResetMs: 2000,            // a gap longer than this starts a fresh tap set
+    tapMaxTaps: 4,              // average at most the last N taps
+
+    // look-ahead scheduler ("A Tale of Two Clocks"). scheduleAheadSec MUST exceed
+    // lookaheadMs/1000 (guarded in test-config) so no click slips between pumps.
+    lookaheadMs: 25,            // setTimeout pump period
+    scheduleAheadSec: 0.1,      // schedule any click within this window of ctx.currentTime
+
+    // click synth (one short oscillator burst per click, raised-cosine shaped).
+    // sine is weak on phone speakers → triangle default.
+    clickType: 'triangle',
+    clickMs: 30,               // total burst length (attack + release)
+    clickAttackMs: 2,          // raised-cosine rise before the fall
+
+    // per-accent-level voice: oscillator freq (Hz) + peak gain (0..1).
+    // accent loudest/brightest, ghost quietest, 'sub' = subdivision filler click.
+    levels: {
+      accent: { freq: 2000, gain: 1.0 },
+      normal: { freq: 1000, gain: 0.6 },
+      ghost:  { freq: 1000, gain: 0.25 },
+      sub:    { freq: 1500, gain: 0.4 },
+    },
+
+    gain: 0.9,                 // metronome master gain into the shared bus
+  },
 });

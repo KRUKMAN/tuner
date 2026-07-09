@@ -12,6 +12,7 @@ import runStore from './test-store.js';
 import runSwAssets from './test-sw-assets.js';
 import runInstruments from './test-instruments.js';
 import runStrobe from './test-strobe.js';
+import runConfig from './test-config.js';
 
 runTheory();
 runFilters();
@@ -23,6 +24,7 @@ runStore();
 runSwAssets();
 runInstruments();
 runStrobe();
+runConfig();
 
 const ok = report();
 process.exit(ok ? 0 : 1);
