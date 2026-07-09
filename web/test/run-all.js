@@ -18,6 +18,7 @@ import runMetronome from './test-metronome.js';
 import runNoteStatus from './test-note-status.js';
 import runFocusOrder from './test-focus-order.js';
 import runA11yMarkup from './test-a11y-markup.js';
+import runThemeCycle from './test-theme-cycle.js';
 
 runTheory();
 runFilters();
@@ -35,6 +36,7 @@ runMetronome();
 runNoteStatus();
 runFocusOrder();
 runA11yMarkup();
+runThemeCycle();
 
 const ok = report();
 process.exit(ok ? 0 : 1);

@@ -103,7 +103,7 @@ function pushGraphColors() {
   strobe.setColors(colors);
 }
 // Status-bar / theme-color per theme (matches --bg-bot in css/styles.css).
-const THEME_COLORS = { dark: '#0b0d10', light: '#efe9df' };
+const THEME_COLORS = { dark: '#0b0d10', light: '#efe9df', contrast: '#000000' };
 function applyThemeColor(theme) {
   const meta = document.getElementById('themeColorMeta');
   if (meta) meta.setAttribute('content', THEME_COLORS[theme] || THEME_COLORS.dark);
@@ -114,6 +114,7 @@ function applyTheme(theme) {
   applyThemeColor(theme);
   cacheColors();
   pushGraphColors();
+  controls.setTheme(theme);
 }
 (() => {
   const saved = store.get('tuner-theme', null);
@@ -189,6 +190,7 @@ controls.setMicState('idle');
 setDisplayMode(state.displayMode);
 controls.setHaptic(state.haptic);
 controls.setChime(state.chime);
+controls.setTheme(root.getAttribute('data-theme') || 'dark');
 
 /* ---------- metronome view + mode nav ---------- */
 const metView = new MetronomeView(document, {

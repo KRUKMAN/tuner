@@ -57,6 +57,47 @@
   color-scheme: light;
 }
 
+/* High-contrast / colour-blind-safe theme (spec §8). All ratios below are
+   computed against this theme's pure-black background per the WCAG 2 relative-
+   luminance formula (verified with a small Node script, not hand-estimated),
+   rounded DOWN to stay conservative:
+     --ink       #ffffff  21.0:1  (WCAG AA normal text needs >= 4.5:1)
+     --muted     #cccccc  13.0:1
+     --muted-2   #999999   7.3:1  (AA large text / non-text UI needs >= 3:1)
+     --accent    #4fc3f7  10.4:1  (and black text ON this accent as a button
+                                   background — .seg-btn.is-on, .start-btn,
+                                   .sheet-done — is also 10.4:1: contrast is
+                                   symmetric in fg/bg, same two colours)
+     --accent-in #ffd500  14.7:1
+     --accent-flat #ff6b4a 7.4:1
+     --surface-brd (45% white over black, flattens to ~#737373) 4.4:1 (meets
+                                   the 3:1 non-text/UI-component minimum,
+                                   WCAG 1.4.11, with more margin than a rough
+                                   "looks like #666" estimate would suggest)
+   All exceed AA minimums with margin. The accent/accent-in hues (blue/yellow)
+   avoid the red-green confusion pairs that trip up the two most common colour-
+   vision deficiencies (deuteranopia/protanopia); the redundant SHAPE cues added
+   in Task 6 (checkmark + ring, not just colour) cover the rarer blue-yellow
+   deficiency (tritanopia) that this particular hue pair alone would not. */
+:root[data-theme="contrast"] {
+  --bg-top: #000000;
+  --bg-mid: #000000;
+  --bg-bot: #000000;
+  --ink: #ffffff;
+  --note-ink: #ffffff;
+  --muted: #cccccc;
+  --muted-2: #999999;
+  --hair: rgba(255, 255, 255, 0.45);
+  --surface: rgba(255, 255, 255, 0.12);
+  --surface-brd: rgba(255, 255, 255, 0.45);
+  --chip-brd: rgba(255, 255, 255, 0.5);
+  --sheet-bg: #050505;
+  --accent: #4fc3f7;
+  --accent-in: #ffd500;
+  --accent-flat: #ff6b4a;
+  color-scheme: dark;
+}
+
 * { box-sizing: border-box; }
 
 /* ---------- Accessibility utilities ---------- */

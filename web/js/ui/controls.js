@@ -7,6 +7,7 @@ import { tuningsFor } from '../music/tunings.js';
 import { INSTRUMENTS } from '../music/instruments.js';
 import { stateLabelFor, announcementFor } from './note-status.js';
 import { nextFocusIndex } from './focus-order.js';
+import { nextTheme, THEME_LABEL } from '../theme-cycle.js';
 
 const FOCUSABLE_SELECTOR =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), ' +
@@ -125,7 +126,7 @@ export class Controls {
 
     this.$('themeBtn').addEventListener('click', () => {
       const cur = this.doc.documentElement.getAttribute('data-theme') || 'dark';
-      cb.onThemeToggle(cur === 'dark' ? 'light' : 'dark');
+      cb.onThemeToggle(nextTheme(cur));
     });
 
     this.displaySeg.querySelectorAll('.seg-btn').forEach((btn) => {
@@ -434,6 +435,13 @@ export class Controls {
     this.$('a4Val').textContent = String(a4);
     this.$('a4Big').textContent = String(a4);
     if (this._tuning) this.setTuning(this._tuning, a4);
+  }
+
+  /** @param {string} theme  the CURRENTLY applied theme id. */
+  setTheme(theme) {
+    const next = nextTheme(theme);
+    this.$('themeBtn').setAttribute('aria-label',
+      `Theme: ${THEME_LABEL[theme] || theme}. Tap for ${THEME_LABEL[next] || next} theme.`);
   }
 
   /** The sheet panel currently shown: main list or the custom-tuning editor. */
