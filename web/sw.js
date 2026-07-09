@@ -12,6 +12,8 @@ const CORE_ASSETS = [
   './index.html',
   './manifest.webmanifest',
   './css/styles.css',
+  './fonts/space-grotesk-var.woff2',
+  './fonts/jetbrains-mono-var.woff2',
   './js/app.js',
   './js/config.js',
   './js/store.js',

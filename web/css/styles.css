@@ -1,3 +1,19 @@
+/* ---------- Self-hosted fonts (offline-first, no external requests) ---------- */
+@font-face {
+  font-family: 'Space Grotesk';
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url('../fonts/space-grotesk-var.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+  src: url('../fonts/jetbrains-mono-var.woff2') format('woff2');
+}
+
 /* Tuner — UI styling. Implements the "2a charcoal / 2b paper" design language.
    Dark theme (2a) is default; [data-theme="light"] is the paper variant (2b). */
 
