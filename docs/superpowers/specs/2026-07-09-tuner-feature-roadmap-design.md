@@ -14,16 +14,18 @@ without disturbing the DSP core:
 - **A. Offline-first** — real precache, self-hosted fonts, per-theme colour, CI test gate.
 - **B. Instrument registry + custom-tuning fixes** — data-driven instruments (ukulele,
   mandolin, violin, banjo, baritone), and a repaired/expanded custom-tuning editor.
-- **C. Temperaments + capo/transpose + calibration** — pluggable temperament, per-string
-  cent offsets, capo shift, wider/finer A4.
+- **C. Capo/transpose + calibration** — capo/transpose shift, wider/finer A4 calibration.
+  (Alternate temperaments + per-string offsets are deferred — designed in
+  `future-temperament-engine.md`.)
 - **D. Strobe display + feedback polish** — dial⇄strobe toggle, in-tune haptics/snap,
   first-run mic primer + error recovery.
 - **E. Metronome + mode navigation** — Tuner|Metronome switch and a custom-meter metronome.
 - **F. Accessibility pass** — spoken note (`aria-live`), focus-trapped sheet, non-colour
   in-tune cues, high-contrast theme.
 
-Explicitly **out of scope this round:** URL/QR tuning sharing, polyphonic "strum-all"
-full-neck tuning, ear-training/play-along.
+Explicitly **out of scope this round:** alternate temperaments + per-string cent offsets
+(designed and documented for later in `future-temperament-engine.md`), URL/QR tuning
+sharing, polyphonic "strum-all" full-neck tuning, ear-training/play-along.
 
 Delivery: this single roadmap spec is approved up front; packages are then built in
 order **A → B → C → D → E → F**, each with its own implementation plan, verification,
@@ -203,69 +205,47 @@ registry, `saveCustom` instrument arg), `web/index.html` (selector container),
 
 ---
 
-## 5. Package C — Temperaments + capo/transpose + calibration
+## 5. Package C — Capo/transpose + A4 calibration
 
-**Goal.** Make target pitches flexible: alternate temperaments, per-string cent offsets, a
-capo shift, and a wider/finer reference pitch — without destabilising the octave-snap logic.
+**Goal.** Let players shift the whole instrument (capo/transpose) and calibrate the
+reference pitch more widely and finely — without touching the octave-snap logic.
+
+> Alternate temperaments + per-string cent offsets were removed from this package and
+> **deferred**; their full design lives in `future-temperament-engine.md`. That is the only
+> part of the original Package C that needed a Stabilizer refactor, so this package is now
+> small and low-risk.
 
 ### Design
 
-**5.1 The single choke point.** Every target today is `frequencyFromMidi(midi, a4)` inside
-the Stabilizer and `nearestString`/`noteFromFrequency`. Package C precomputes a **targets
-array** (one Hz value per string) at engine-build / `setTuning` time and threads it through
-the Stabilizer instead of recomputing from MIDI inline.
+**5.1 Capo / transpose.** A global integer **capo** setting (range −5…+12 semitones) shifts
+every string's MIDI before the engine is built (`buildEngine`). Because targets already flow
+through `frequencyFromMidi(midi, a4)`, a MIDI shift makes `engineModeFor`, reference tones,
+string labels, and octave-snap all shift consistently (capo = sounding pitch). It is a pure
+one-line transform on `tuning.strings`; **no Stabilizer changes.** One stepper in the sheet;
+0 by default; clearly labelled (sounding pitch).
 
-**5.2 `js/music/temperament.js` (pure).** A temperament is a function
-`centsOffset(pitchClass, rootPitchClass) → cents` giving deviation from 12-TET. Ship:
-- **Equal (12-TET)** — default, returns 0 everywhere (fully backward compatible).
-- **Just intonation (major)** — relative to a chosen root.
-- **Werckmeister III** — one historical well temperament, relative to root.
-Plus **per-string cent offsets** (advanced) and a **"Sweetened (electric guitar)"** preset
-that is really a per-string offset set. Non-equal temperaments require a **root/key
-selector** (defaults to the tuning's lowest note's pitch class).
-
-**5.3 Tuning model extension.** `Tuning` gains optional `centOffsets: number[]` (fractional
-cents, per string). `validateTuningStrings` is relaxed to carry offsets. Target for string
-*i* = `frequencyFromMidi(midi_i + capo, a4) * 2^((temperamentCents(pc_i, root) +
-centOffsets_i) / 1200)`.
-
-**5.4 Capo / transpose.** A global integer **capo** setting (range e.g. −5…+12 semitones)
-shifts every string's MIDI before targets are computed, so `engineModeFor`, reference tones,
-string labels, and octave-snap all shift consistently (capo = sounding pitch). One stepper
-in the sheet; 0 by default; clearly labelled.
-
-**5.5 A4 calibration.** Widen `CONFIG.a4Min/a4Max` to **410…470** (covers 415 baroque, 432,
-440, 444+). Support **fractional** A4 (0.1 Hz): `changeA4` no longer rounds to integer;
-display shows one decimal when non-integer. Quick-preset chips **415 / 432 / 440 / 444**.
-Steppers get **long-press auto-repeat** (rAF-driven) for fast travel; fine step 0.1 Hz.
-
-**5.6 Stabilizer threading.** `setTuning` accepts the precomputed targets (or the params to
-compute them); `_resolveReference`, the octave-snap candidate scan, and `refFreq`/`rawCents`
-use target Hz rather than `frequencyFromMidi(ref.midi, a4)`. Chromatic mode (tuning = null)
-stays 12-TET (temperament needs a key; chromatic has none). **Audit:** octave-snap
-thresholds (`targetSnapCents`, 150c history window) and cents display rounding against
-fractional targets — covered by tests.
+**5.2 A4 calibration.** Widen `CONFIG.a4Min/a4Max` to **410…470** (covers 415 baroque, 432,
+440, 444+). Support **fractional** A4 (0.1 Hz): `changeA4` no longer rounds to integer; the
+display shows one decimal when non-integer; `Stabilizer.setA4` already clamps. Quick-preset
+chips **415 / 432 / 440 / 444**. Steppers get **long-press auto-repeat** (rAF-driven) for
+fast travel; fine step 0.1 Hz on the A4 stepper.
 
 ### Files
-New: `web/js/music/temperament.js`, `web/test/test-temperament.js`.
-Changed: `web/js/config.js` (a4 range, temperament/capo defaults, presets),
-`web/js/music/theory.js` (target helper), `web/js/music/tunings.js` (`centOffsets`),
-`web/js/dsp/stabilizer.js` (targets threading), `web/js/app.js` (capo/temperament/root
-state + engine rebuild), `web/js/ui/controls.js` + `index.html` + `styles.css` (advanced
-controls: temperament, root, capo, A4 presets/fine-tune), `web/sw.js` (assets + version).
+Changed: `web/js/config.js` (a4 range + presets, capo default),
+`web/js/app.js` (capo state + MIDI shift in `buildEngine`; fractional A4 in `changeA4`),
+`web/js/ui/controls.js` + `web/index.html` + `web/css/styles.css` (capo stepper, A4 presets,
+fractional display, long-press repeat), `web/sw.js` (assets + version).
 
 ### Tests
-- `test-temperament`: known-value checks (JI major third ≈ −13.7c; Werckmeister fifths).
-- Extend `test-stabilizer`: targets threading keeps 12-TET behaviour byte-for-byte when
-  temperament = Equal, capo = 0, offsets = 0 (regression guard); octave-snap correct with a
-  −5c per-string offset.
-- Manual: capo shift retargets; 432 Hz preset; sweetened preset audibly offsets.
+- Extend tuning/theory tests: capo shift produces the expected target frequencies; fractional
+  A4 produces the expected cents.
+- Manual: capo +2 retargets standard to F♯–B–E–A–C♯–F♯; 432 Hz preset; long-press ramps A4.
 
 ### Risks
-- Fractional targets ripple into octave-snap heuristics → strong regression tests + the
-  Equal/capo0/offset0 fast-path must equal current output exactly.
-- Keep the default surface simple: temperament/capo/offsets live behind an "Advanced"
-  disclosure so the common case stays one-tap 12-TET.
+- Fractional A4 removes an integer assumption in the readout formatting → audit the A4
+  display + cents rounding (small, covered by tests).
+- A large capo can push the lowest string across the guitar↔bass engine boundary in
+  `engineModeFor` — that is correct/intended behaviour; verify the boundary.
 
 ---
 
@@ -431,10 +411,10 @@ theme tokens, shape cues, reduced-motion guards), `web/js/app.js` (theme cycling
 ## 9. Testing strategy (whole roadmap)
 
 - **Pure logic is unit-tested in Node** via the existing `web/test/run-all.js` harness:
-  new suites `test-instruments`, `test-temperament`, `test-meter`, `test-strobe`,
-  `test-sw-assets`; extensions to `test-theory`/`test-stabilizer`.
-- **Regression guard for C:** with temperament=Equal, capo=0, offsets=0 the Stabilizer
-  output must equal the current implementation exactly.
+  new suites `test-instruments`, `test-meter`, `test-strobe`, `test-sw-assets`; extensions
+  to `test-theory`/`test-stabilizer`.
+- **Regression guard for C:** capo=0 must leave targets identical to today (capo is a pure
+  MIDI shift; the Stabilizer internals are untouched this round).
 - **CI gate (from A):** tests run in `deploy.yml` before publish.
 - **Browser-only behaviour** (audio timing, haptics, focus, offline) is verified manually
   per package; a lightweight jsdom/Playwright smoke test is optional, not required.
@@ -445,8 +425,8 @@ theme tokens, shape cues, reduced-motion guards), `web/js/app.js` (theme cycling
   woff2 subset as-is (no subsetting build).
 - **B:** instruments added = ukulele (reentrant + low-G), mandolin, violin, banjo, baritone;
   selector = scrollable chips; reentrant stored in pitch order.
-- **C:** temperaments = Equal + Just (major) + Werckmeister III + per-string offsets +
-  sweetened-guitar preset; A4 range 410–470, 0.1 Hz fine; capo −5…+12.
+- **C:** A4 range 410–470, 0.1 Hz fine, presets 415/432/440/444; capo −5…+12.
+  (Temperaments + per-string offsets deferred — see `future-temperament-engine.md`.)
 - **D:** haptic default on, chime default off; strobe = horizontal stripe band; dial is
   default view.
 - **E:** 4-state accents + subdivisions + additive meters; separate tuner/metronome modes;
@@ -458,7 +438,7 @@ theme tokens, shape cues, reduced-motion guards), `web/js/app.js` (theme cycling
 | Risk | Mitigation |
 |------|-----------|
 | Hand-maintained precache list drifts | `test-sw-assets` + per-package checklist to update `CORE_ASSETS` + bump `CACHE` |
-| Temperament/offsets destabilise octave-snap | Exact-equality regression test for Equal/capo0/offset0; targeted offset tests |
+| Capo pushes lowest string across guitar↔bass engine boundary | Intended (`engineModeFor` derives from pitch); verify the boundary |
 | Metronome timing jitter/drift | Look-ahead scheduler on `ctx.currentTime`; manual drift + backgrounding test |
 | Editor re-render loses input focus | Incremental row render / preserve name value |
 | Feature creep buries the simple case | Advanced controls behind disclosures; default faces stay one-tap simple |
