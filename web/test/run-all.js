@@ -13,6 +13,7 @@ import runSwAssets from './test-sw-assets.js';
 import runInstruments from './test-instruments.js';
 import runStrobe from './test-strobe.js';
 import runConfig from './test-config.js';
+import runMeter from './test-meter.js';
 
 runTheory();
 runFilters();
@@ -25,6 +26,7 @@ runSwAssets();
 runInstruments();
 runStrobe();
 runConfig();
+runMeter();
 
 const ok = report();
 process.exit(ok ? 0 : 1);

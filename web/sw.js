@@ -5,7 +5,7 @@
 //
 // CACHE-LIST DISCIPLINE: CORE_ASSETS is hand-maintained. When a module, asset, or
 // font is added or removed, update this list AND bump CACHE. test-sw-assets guards it.
-const CACHE = 'tuner-cache-v4';
+const CACHE = 'tuner-cache-v5';
 
 const CORE_ASSETS = [
   './',
@@ -28,6 +28,7 @@ const CORE_ASSETS = [
   './js/music/instruments.js',
   './js/music/theory.js',
   './js/music/tunings.js',
+  './js/music/meter.js',
   './js/ui/controls.js',
   './js/ui/dial.js',
   './js/ui/graph.js',
