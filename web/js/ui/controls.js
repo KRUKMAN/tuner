@@ -5,6 +5,7 @@
 import { midiToName, frequencyFromMidi } from '../music/theory.js';
 import { tuningsFor } from '../music/tunings.js';
 import { INSTRUMENTS } from '../music/instruments.js';
+import { stateLabelFor, announcementFor } from './note-status.js';
 
 export class Controls {
   /**
@@ -31,6 +32,7 @@ export class Controls {
     this.$ = (id) => doc.getElementById(id);
 
     this.app = this.$('app');
+    this.liveRegion = this.$('liveRegion');
     this.stateLabel = this.$('stateLabel');
     this.noteName = this.$('noteName');
     this.noteOct = this.$('noteOct');
@@ -63,6 +65,7 @@ export class Controls {
     this._micRunning = false;
     this._blankTimer = null;
     this._lastNoteKey = null;
+    this._announceKey = null;
 
     // custom editor working state
     this._editMidis = [];
@@ -118,6 +121,23 @@ export class Controls {
   /** @param {import('../dsp/stabilizer.js').DisplayState} ds */
   update(ds) {
     this.app.style.setProperty('--conf', String(ds.confidence != null ? ds.confidence : 1));
+
+    const ann = announcementFor(ds, this._announceKey);
+    if (ann) {
+      this._announceKey = ann.key;
+      if (ann.text) {
+        // Clear-then-set (forcing a reflow in between) so a screen reader
+        // re-announces even when the new text is byte-identical to what's
+        // already in the region (e.g. the same note resumes after a brief
+        // silence) — some ATs only fire on an observed DOM mutation, not on
+        // textContent merely being assigned the same string. Mirrors the
+        // existing note-swap restart idiom below (`void ...offsetWidth`).
+        this.liveRegion.textContent = '';
+        void this.liveRegion.offsetWidth;
+        this.liveRegion.textContent = ann.text;
+      }
+    }
+
     const active = ds.status === 'active' || ds.status === 'hold';
     const blank = !active || ds.noteName == null;
 
@@ -150,14 +170,9 @@ export class Controls {
       : letter;
     this.noteOct.textContent = ds.octave != null ? String(ds.octave) : '';
 
-    const c = ds.cents;
-    let label;
-    if (ds.inTune) label = 'IN TUNE';
-    else if (Math.abs(c) <= 15) label = c < 0 ? 'ALMOST ♭' : 'ALMOST ♯';
-    else label = c < 0 ? 'FLAT ♭' : 'SHARP ♯';
-    this.stateLabel.textContent = label;
+    this.stateLabel.textContent = stateLabelFor(ds);
 
-    const cents = Math.round(c);
+    const cents = Math.round(ds.cents);
     const sign = cents < 0 ? '−' : cents > 0 ? '+' : '';
     const hz = ds.frequency != null ? ds.frequency.toFixed(1) : '–';
     this.noteSub.textContent = `${hz} Hz  ·  ${sign}${Math.abs(cents)} cents`;
