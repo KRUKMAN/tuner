@@ -1,7 +1,7 @@
 // Node. Stabilizer gate/median/octave/hysteresis/hold behaviors (Section 6).
 // Drives Stabilizer.update(frame, tMs) with synthetic PitchFrames and 16.67 ms steps.
 
-import { suite, assert } from './assert.js';
+import { suite, assert, assertClose } from './assert.js';
 import { Stabilizer } from '../js/dsp/stabilizer.js';
 import { CONFIG } from '../js/config.js';
 
@@ -242,26 +242,33 @@ export default function run() {
     assert(sustained, "a locked note stays 'active' at clarity 0.72 (relaxed sustain threshold)");
   });
 
-  suite('stabilizer(v2): onset confirmation needs two consecutive good frames', () => {
-    // One good frame then a rejecting frame → never displays.
+  suite('stabilizer(v2): onset confirmation needs attackConfirmFrames consecutive good frames', () => {
+    // attackConfirmFrames was raised 2 -> 3: a 2-sample median is just the mean of the two,
+    // so it cannot reject a pluck's attack transient. Three samples can.
+    assert(CONFIG.attackConfirmFrames >= 3, 'attackConfirmFrames >= 3 so the median can reject one outlier');
+
+    // Good frames separated by a rejecting frame never accumulate into a display.
+    // This is what stops sporadic, quasi-periodic room noise from eventually locking.
     const a = makeStab();
     let t = 0;
     let sawActiveA = false;
-    let ds = a.update(hframe(110, 0.97, -20, 0.98), t); t += DT;
-    if (ds.status === 'active') sawActiveA = true;
-    ds = a.update(dropout(-20), t); t += DT; // rejecting frame breaks the streak
-    if (ds.status === 'active') sawActiveA = true;
-    ds = a.update(hframe(110, 0.97, -20, 0.98), t); t += DT; // fresh streak, still warming
-    if (ds.status === 'active') sawActiveA = true;
-    assert(!sawActiveA, 'a single good frame (streak broken) never reaches active');
+    for (let i = 0; i < 4; i++) {
+      let ds = a.update(hframe(110, 0.97, -20, 0.98), t); t += DT;
+      if (ds.status === 'active') sawActiveA = true;
+      ds = a.update(dropout(-20), t); t += DT; // rejecting frame breaks the streak
+      if (ds.status === 'active') sawActiveA = true;
+    }
+    assert(!sawActiveA, 'good frames broken up by rejects never accumulate into an active display');
 
-    // Two consecutive good frames → active on the 2nd.
+    // Three consecutive good frames → active on the 3rd, not before.
     const b = makeStab();
     t = 0;
     const d0 = b.update(hframe(110, 0.97, -20, 0.98), t); t += DT;
-    const d1 = b.update(hframe(110, 0.97, -20, 0.98), t);
+    const d1 = b.update(hframe(110, 0.97, -20, 0.98), t); t += DT;
+    const d2 = b.update(hframe(110, 0.97, -20, 0.98), t);
     assert(d0.status !== 'active', "first good frame is a warm-up (not 'active')");
-    assert(d1.status === 'active', "second consecutive good frame → 'active'");
+    assert(d1.status !== 'active', "second good frame is still a warm-up (not 'active')");
+    assert(d2.status === 'active', "third consecutive good frame → 'active'");
   });
 
   suite('stabilizer(v2): confidence decays monotonically through the hold', () => {
@@ -339,6 +346,114 @@ export default function run() {
     assert(ds.stringIndex === 2, `D string index 2 (got ${ds.stringIndex})`);
   });
 
+  suite('stabilizer(v2): octave snap must NOT relabel a slightly-sharp string', () => {
+    // REGRESSION. B3 sits a near-exact perfect twelfth (x3) above E2: E2*3 = 247.23 Hz
+    // vs B3 = 246.94 Hz, only ~2 cents apart. An unguarded snap divides a slightly-sharp
+    // B3 by 3, lands ~6 cents from E2, decides that beats the +8 cents to B3 itself, and
+    // confidently displays the WRONG string. Identical trap: E4 is a twelfth above A2.
+    // CONFIG.snapGuardCents blocks the snap whenever f is already near a string.
+    const tuning = [40, 45, 50, 55, 59, 64]; // guitar standard
+    const detuned = (midi, cents) =>
+      440 * Math.pow(2, (midi - 69) / 12) * Math.pow(2, cents / 1200);
+
+    const b3 = new Stabilizer({ config: CONFIG, a4: 440, tuning, lockedString: null });
+    let t = 0;
+    let ds;
+    for (let i = 0; i < 12; i++) { ds = b3.update(hframe(detuned(59, 8), 0.99, -20, 0.99), t); t += DT; }
+    assert(ds.midi === 59, `B3 +8c stays B3 (midi 59), NOT E2 (40) — got ${ds.midi}`);
+    assert(ds.noteName === 'B' && ds.octave === 3, `B3 +8c reads B3 (got ${ds.noteName}${ds.octave})`);
+    assert(ds.stringIndex === 4, `B3 +8c highlights the B string (index 4), got ${ds.stringIndex}`);
+    assertClose(ds.cents, 8, 2, 'B3 +8c shows ≈ +8 cents (not ≈ +6.5 against E2)');
+
+    const e4 = new Stabilizer({ config: CONFIG, a4: 440, tuning, lockedString: null });
+    t = 0;
+    for (let i = 0; i < 12; i++) { ds = e4.update(hframe(detuned(64, 8), 0.99, -20, 0.99), t); t += DT; }
+    assert(ds.midi === 64, `E4 +8c stays E4 (midi 64), NOT A2 (45) — got ${ds.midi}`);
+    assert(ds.stringIndex === 5, `E4 +8c highlights the high-E string (index 5), got ${ds.stringIndex}`);
+
+    // A badly-flat string must still read as itself, not snap to a neighbour.
+    const flat = new Stabilizer({ config: CONFIG, a4: 440, tuning, lockedString: null });
+    t = 0;
+    for (let i = 0; i < 12; i++) { ds = flat.update(hframe(detuned(59, -45), 0.99, -20, 0.99), t); t += DT; }
+    assert(ds.midi === 59, `B3 -45c still reads B3 (got ${ds.midi})`);
+  });
+
+  suite('stabilizer(v2): guarded snap still rescues a genuine octave error', () => {
+    // Bass 4-string. The detector reports A2 (110 Hz) — an octave-up error off the A1
+    // string (55 Hz). 110 Hz sits ~200 cents from the nearest string (G2), well outside
+    // snapGuardCents, so the snap is permitted and pulls it back down to A1.
+    const s = new Stabilizer({ config: CONFIG, a4: 440, tuning: [28, 33, 38, 43], lockedString: null });
+    let t = 0;
+    let ds;
+    for (let i = 0; i < 6; i++) { ds = s.update(hframe(110, 0.95, -20, 0.9), t); t += DT; }
+    assert(ds.status === 'active', `rescued note reaches 'active' (got '${ds.status}')`);
+    assert(ds.midi === 33, `octave-snapped down to A1 midi 33, NOT A2 45 (got ${ds.midi})`);
+    assert(ds.stringIndex === 1, `A string index 1 (got ${ds.stringIndex})`);
+  });
+
+  suite('stabilizer(v2): an attack transient is never displayed as a confident note', () => {
+    // REGRESSION (found on real recorded plucks). A real pluck's first ~15-30 ms is
+    // broadband and non-periodic. With a 2-sample median (which is just their mean) that
+    // transient became the very first thing shown, at confidence 1.00 and hundreds of
+    // cents off. Nothing may display until the median can reject a single outlier.
+    const s = makeStab();
+    let t = 0;
+    let ds;
+
+    ds = s.update(hframe(600, 0.99, -20, 0.99), t); t += DT;   // the transient
+    assert(ds.status !== 'active', `transient frame is not displayed (got '${ds.status}')`);
+
+    ds = s.update(hframe(110, 0.99, -20, 0.99), t); t += DT;
+    assert(ds.status !== 'active', `2nd frame still warming up — median needs 3 (got '${ds.status}')`);
+
+    ds = s.update(hframe(110, 0.99, -20, 0.99), t); t += DT;
+    assert(ds.status === 'active', `displays on the 3rd accepted frame (got '${ds.status}')`);
+    assert(ds.midi === 45, `median rejects the transient → A2 midi 45, not D5 (got ${ds.midi})`);
+  });
+
+  suite('stabilizer(v2): onset protection applies to every note, not just the first', () => {
+    // REGRESSION. The old gate was `goodStreak < attackConfirmFrames && lastGood === null`.
+    // `lastGood` is never cleared after the first note, so every later note displayed
+    // straight off its first accepted frame — a 1-sample "median" is the raw frame itself.
+    const s = makeStab();
+    let t = 0;
+    let ds;
+
+    for (let i = 0; i < 8; i++) { ds = s.update(hframe(110, 0.99, -20, 0.99), t); t += DT; }
+    assert(ds.status === 'active' && ds.midi === 45, 'first note establishes A2');
+
+    // Let the note die: quiet frames past gateReleaseMs + holdMs close the gate and
+    // clear the median history (but NOT lastGood).
+    for (let i = 0; i < 45; i++) { ds = s.update(dropout(-80), t); t += DT; }
+    assert(ds.status === 'silent', `gate closed after silence (got '${ds.status}')`);
+
+    // A new note begins with a transient. It must NOT be displayed.
+    ds = s.update(hframe(600, 0.99, -20, 0.99), t); t += DT;
+    assert(ds.status !== 'active', `transient on a LATER note is not displayed (got '${ds.status}')`);
+    assert(ds.midi !== 74, 'the transient pitch never reaches the display');
+  });
+
+  suite('stabilizer(v2): octave sanity is symmetric (catches subharmonic reads too)', () => {
+    // REGRESSION (found on a real quiet "pp" pluck). The raw detector can lock onto a
+    // SUBHARMONIC of a weak fundamental, reading an octave LOW. The sanity check only
+    // tried f, f/2, f/3 — corrections downward — so a too-low reading survived and, once
+    // it outvoted the median window, flipped the displayed note down an octave.
+    const s = new Stabilizer({ config: CONFIG, a4: 440, tuning: null, lockedString: null });
+    let t = 0;
+    let ds;
+
+    const B3 = 246.94;
+    for (let i = 0; i < 5; i++) { ds = s.update(hframe(B3, 0.99, -20, 0.99), t); t += DT; }
+    assert(ds.midi === 59, `established B3 midi 59 (got ${ds.midi})`);
+
+    // Eight consecutive subharmonic (period x2) frames. Enough to outvote the 5-sample
+    // median AND to clear noteSwitchFrames, so an uncorrected reading really would flip
+    // the displayed note down an octave to B2 (47). Fewer frames pass either way, because
+    // the note-name hysteresis alone absorbs a short excursion.
+    for (let i = 0; i < 8; i++) { ds = s.update(hframe(B3 / 2, 0.99, -20, 0.99), t); t += DT; }
+    assert(ds.midi === 59, `subharmonic reads corrected back up to B3, not B2 47 (got ${ds.midi})`);
+  });
+
   suite('stabilizer(v2): legacy fixed-gate path (adaptiveGate:false) still locks', () => {
     const legacyCfg = { ...CONFIG, adaptiveGate: false };
     const s = new Stabilizer({ config: legacyCfg, a4: 440, tuning: null, lockedString: null });
@@ -351,6 +466,50 @@ export default function run() {
     assert(ds.status === 'active', `fixed -45/-55 gate still activates (got '${ds.status}')`);
     assert(ds.noteName === 'A' && ds.octave === 2, `note A2 (got ${ds.noteName}${ds.octave})`);
     assert(Math.abs(ds.cents) < 1, `|cents| < 1 (got ${num(ds.cents)})`);
+  });
+
+  // ==================================================================
+  // lockedString (UI "pin a string" wiring). The Stabilizer has supported
+  // this since it was built; only web/js/ui/controls.js + app.js were
+  // missing the wiring to call setLockedString(). These prove the DSP
+  // side the UI now relies on: a locked string overrides auto-select
+  // regardless of what's actually being played, and unlocking restores
+  // auto-select.
+  // ==================================================================
+
+  suite('stabilizer: lockedString pins the reference regardless of detected pitch', () => {
+    const s = new Stabilizer({
+      config: CONFIG,
+      a4: 440,
+      tuning: [40, 45, 50, 55, 59, 64],
+      lockedString: 1, // A2 (110 Hz) pinned as the target
+    });
+    let t = 0;
+    let ds;
+    // Feed E2 (82.41 Hz — string index 0's own pitch) well past the gate + onset.
+    for (let i = 0; i < 20; i++) {
+      ds = s.update(hframe(82.41, 0.95, -20, 0.9), t);
+      t += DT;
+    }
+    assert(ds.status === 'active', `locked + steady input → 'active' (got '${ds.status}')`);
+    assert(
+      ds.stringIndex === 1,
+      `stays locked to string index 1 (A2), does NOT auto-select string 0 (got ${ds.stringIndex})`,
+    );
+    assert(ds.midi === 45, `displayed midi is the locked A2 (45), not E2's 40 (got ${ds.midi})`);
+    assertClose(ds.cents, -500, 5, 'cents reflect E2 played against the locked A2 target (~ -500c)');
+
+    // Unlock: the same steady E2 input should now auto-select string 0 (E2)
+    // after a few consistent frames (note-switch hysteresis).
+    s.setLockedString(null);
+    for (let i = 0; i < 10; i++) {
+      ds = s.update(hframe(82.41, 0.95, -20, 0.9), t);
+      t += DT;
+    }
+    assert(ds.status === 'active', `still 'active' after unlocking (got '${ds.status}')`);
+    assert(ds.stringIndex === 0, `auto-selects string index 0 (E2) once unlocked (got ${ds.stringIndex})`);
+    assert(ds.midi === 40, `displayed midi is E2 (40) (got ${ds.midi})`);
+    assertClose(ds.cents, 0, 3, 'cents settle near 0 once auto-locked onto the matching string');
   });
 }
 

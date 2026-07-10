@@ -78,7 +78,7 @@ export class Stabilizer {
     this.floorDb = this.config.noiseFloorInitDb != null ? this.config.noiseFloorInitDb : -70;
     this.lastFloorMs = null;
 
-    // Onset streak.
+    // Consecutive accepted frames since the last streak break (onset confirmation).
     this.goodStreak = 0;
 
     this._resetSmoothing();
@@ -192,28 +192,40 @@ export class Stabilizer {
     // --- Step 3a: target-aware octave snap (tuning mode, no history) ----
     let f = frame.frequency;
     if (this.tuning) {
-      // Snap to the octave of f that lands CLOSEST to a target string. Candidates
-      // are ordered low->high so ties resolve toward the fundamental (weak-
-      // fundamental bass strings octave-error UP: A1 55Hz read as A2 110Hz -> we
-      // pull it back to A1). The generous window lets an out-of-tune string still
-      // resolve to its intended string+octave while showing how far off it is.
-      const cands = [f / 3, f / 2, f, f * 2];
-      let bestF = f;
-      let bestAbs = Infinity;
-      for (let i = 0; i < cands.length; i++) {
-        const cand = cands[i];
-        if (cand < 1) continue;
-        const a = Math.abs(nearestString(cand, this.tuning, this.a4).cents);
-        if (a < bestAbs) { bestAbs = a; bestF = cand; }
+      // GUARD FIRST: only octave-correct a reading that is clearly not any string.
+      // If f already lands within snapGuardCents of a string, that reading IS that
+      // string -- merely out of tune -- and must never be relabeled. Without this,
+      // a slightly-sharp B3 gets divided by 3 onto E2 (B3 sits a near-exact perfect
+      // twelfth above E2: E2*3 = 247.23 Hz vs B3 = 246.94 Hz, ~2 cents apart), so the
+      // tuner confidently displays the wrong string. Same trap for E4 (x3 above A2).
+      const direct = nearestString(f, this.tuning, this.a4);
+      if (Math.abs(direct.cents) > c.snapGuardCents) {
+        // Snap to the octave of f that lands CLOSEST to a target string. Candidates
+        // are ordered low->high so ties resolve toward the fundamental (weak-
+        // fundamental bass strings octave-error UP: A1 55Hz read as A2 110Hz -> we
+        // pull it back to A1). The generous window lets an out-of-tune string still
+        // resolve to its intended string+octave while showing how far off it is.
+        const cands = [f / 3, f / 2, f, f * 2];
+        let bestF = f;
+        let bestAbs = Infinity;
+        for (let i = 0; i < cands.length; i++) {
+          const cand = cands[i];
+          if (cand < 1) continue;
+          const a = Math.abs(nearestString(cand, this.tuning, this.a4).cents);
+          if (a < bestAbs) { bestAbs = a; bestF = cand; }
+        }
+        if (bestAbs <= c.targetSnapCents) f = bestF;
       }
-      if (bestAbs <= c.targetSnapCents) f = bestF;
     }
 
     // --- Step 3b: history-based octave sanity (second line of defense) --
+    // SYMMETRIC: a raw reading can err either way. Strong-2nd-harmonic buzz reads an
+    // octave HIGH; a quiet pluck with a weak fundamental can lock onto a SUBHARMONIC
+    // (period x2 / x4) and read an octave LOW. Test both directions, preferring f itself.
     if (this.history.length >= 3) {
       const h = median(this.history);
-      if (Math.abs(centsBetween(f, h)) > 150) {
-        const candidates = [f, f / 2, f / 3];
+      if (Math.abs(centsBetween(f, h)) > c.octaveSanityCents) {
+        const candidates = [f, f / 2, f / 3, f * 2, f * 3];
         for (let i = 0; i < candidates.length; i++) {
           if (Math.abs(centsBetween(candidates[i], h)) <= c.octaveCheckCents) {
             f = candidates[i];
@@ -228,10 +240,21 @@ export class Stabilizer {
     if (this.history.length > c.medianWindow) this.history.shift();
     const medF = median(this.history);
 
-    // --- Step 4.5: onset confirmation (first display only) --------------
+    // --- Step 4.5: onset confirmation ------------------------------------
+    // Require attackConfirmFrames CONSECUTIVE accepted frames before the first display of
+    // a note. Two reasons, both found on real audio:
+    //   * A real pluck's attack is broadband and non-periodic. With fewer than 3 samples
+    //     the median cannot reject it (of 2 it is just their mean), so the transient
+    //     surfaced as a full-confidence WRONG note for ~50 ms.
+    //   * Quasi-periodic room noise (voiced speech) clears the gates in short bursts.
+    //     The streak must reset on every rejected frame, or sporadic bursts would
+    //     accumulate across rejects and eventually display.
+    // Gate on `displayedRef`, NOT `lastGood`: `lastGood` is never cleared, so it made this
+    // check apply only to the very first note ever; `displayedRef` is cleared by
+    // _resetSmoothing() whenever the gate closes, so every new note is confirmed afresh.
+    // Once a note IS displayed, an isolated reject must not blank it — _noFresh holds it.
     this.goodStreak++;
-    if (this.goodStreak < c.attackConfirmFrames && this.lastGood === null) {
-      // Warm-up: keep filling history but don't display yet. Do NOT reset streak.
+    if (this.displayedRef === null && this.goodStreak < c.attackConfirmFrames) {
       return this._noFresh(frame, timestampMs, true);
     }
 

@@ -95,4 +95,29 @@ export default function run() {
     const cBass = makeCustomTuning([28, 33, 38, 43]);
     assert(cBass.instrument === 'bass', 'makeCustomTuning(bass range) → bass');
   });
+
+  suite('tunings: Package B instruments', () => {
+    // Ukulele standard is reentrant (physical gCEA); stored in PITCH order C4 E4 G4 A4.
+    assert(TUNINGS['ukulele-standard'].strings.join(',') === '60,64,67,69', 'ukulele standard = C4 E4 G4 A4 (pitch order)');
+    assert(TUNINGS['ukulele-standard'].instrument === 'ukulele', 'ukulele standard tagged instrument ukulele');
+    assertClose(frequencyFromMidi(69, 440), 440, 1e-9, 'ukulele A4 string = 440 Hz');
+    // Ukulele Low-G is natural (ascending) G3 C4 E4 A4.
+    assert(TUNINGS['ukulele-low-g'].strings.join(',') === '55,60,64,69', 'ukulele low-G = G3 C4 E4 A4');
+    // Mandolin & violin: G3 D4 A4 E5 — E5 (MIDI 76) is exactly the custom-string clamp ceiling.
+    assert(TUNINGS['mandolin-standard'].strings.join(',') === '55,62,69,76', 'mandolin = G3 D4 A4 E5');
+    assert(TUNINGS['violin-standard'].strings.join(',') === '55,62,69,76', 'violin = G3 D4 A4 E5');
+    assertClose(frequencyFromMidi(76, 440), 659.26, 0.05, 'top string E5 ≈ 659.26 Hz (well under guitar fMax 1200)');
+    // Banjo open-G, 5-string reentrant drone stored in pitch order D3 G3 B3 D4 G4.
+    assert(TUNINGS['banjo-open-g'].strings.join(',') === '50,55,59,62,67', 'banjo open G = D3 G3 B3 D4 G4 (pitch order)');
+    // Baritone guitar B1 E2 A2 D3 F#3 B3; lowest B1 ≈ 61.74 Hz → derives the bass DSP profile.
+    assert(TUNINGS['baritone-standard'].strings.join(',') === '35,40,45,50,54,59', 'baritone = B1 E2 A2 D3 F#3 B3');
+    assertClose(frequencyFromMidi(35, 440), 61.74, 0.05, 'baritone low B1 ≈ 61.74 Hz (< 70 → bass engine)');
+    // Every new preset is stored strictly ascending (index 0 = lowest pitch).
+    for (const id of ['ukulele-standard', 'ukulele-low-g', 'mandolin-standard', 'violin-standard', 'banjo-open-g', 'baritone-standard']) {
+      const s = TUNINGS[id].strings;
+      let asc = true;
+      for (let i = 1; i < s.length; i++) if (s[i] <= s[i - 1]) asc = false;
+      assert(asc, `${id} stored strictly ascending (pitch order)`);
+    }
+  });
 }

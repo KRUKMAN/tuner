@@ -84,7 +84,12 @@ export const CONFIG = deepFreeze({
   // --- v2: smarter clarity / onset -------------------------------------
   claritySustain: 0.68,          // relaxed threshold once a note is locked (decaying bass strings)
   sustainLockMs: 250,            // ref must be stable this long before relaxing
-  attackConfirmFrames: 2,        // consecutive good frames before FIRST display
+  attackConfirmFrames: 3,        // median samples required before ANY display. Must be >= 3:
+                                 // median() of 1-2 samples cannot reject an outlier (of 2 it
+                                 // is just their mean), so a pluck's broadband attack transient
+                                 // -- or a frame or two of quasi-periodic room noise -- would
+                                 // otherwise be shown as a full-confidence wrong note.
+  octaveSanityCents: 150,        // history-vs-reading gap that triggers the octave sanity check
 
   // --- v2: confidence (0..1) -------------------------------------------
   confidenceClarityLo: 0.75,     // clarity mapping: 0.75 -> 0
@@ -99,6 +104,29 @@ export const CONFIG = deepFreeze({
   detectLpfMinHz: 500,           // floor so high strings keep enough harmonics
   harmonicityMin: 0.55,          // reject frames below this (broadband buzz/noise)
   targetSnapCents: 45,           // tuning-mode octave snap window to a target string
+  snapGuardCents: 50,            // only octave-snap a reading this far from EVERY string.
+                                 // Within it the reading IS that string, merely out of
+                                 // tune — relabeling would map a slightly-sharp B3 onto
+                                 // E2, since B3 sits a near-exact twelfth (x3) above E2.
+
+  // --- Package D: master gain bus -------------------------------------------
+  masterGain: 0.9,                // master bus gain (headroom so tone + chime can't clip)
+
+  // --- Package D: strobe display ---------------------------------------------
+  strobeVelocityScale: 1.2,       // px/sec phase drift per cent of mistuning, outside the dead-band
+  strobeStripeCount: 12,          // stripes across the band at rest
+  strobeBandHeightFrac: 0.22,     // stripe band height as a fraction of the canvas size
+  displayModeDefault: 'dial',     // 'dial' | 'strobe'
+
+  // --- Package D: in-tune feedback (haptic / dial snap / chime) --------------
+  inTuneFeedbackDebounceMs: 80,   // ds.inTune must hold this long before feedback fires
+  hapticVibrateMs: 30,
+  hapticDefaultOn: true,
+  chimeDefaultOn: false,
+  chimeFrequencyHz: 1046.5,       // C6 — soft, distinct from any tuning target
+  chimeGain: 0.18,                // peak linear gain of the chime envelope
+  chimeAttackMs: 15,
+  chimeReleaseMs: 220,
 
   modes: {
     guitar: {
@@ -115,5 +143,44 @@ export const CONFIG = deepFreeze({
       hpfHz: null,
       lpfHz: 1000,
     },
+  },
+
+  // --- Package E: metronome ------------------------------------------------
+  // Every metronome numeric parameter lives here (spec §1.3, §7.5). No inline
+  // literals in meter.js / metronome.js / metronome-view.js.
+  metronome: {
+    bpmMin: 30,
+    bpmMax: 300,
+    bpmDefault: 120,
+    beatCountMin: 1,             // a bar is an array of beats; 1..16 beats
+    beatCountMax: 16,
+    subdivisions: [1, 2, 3, 4],  // clicks per beat; first = beat accent, rest = 'sub'
+
+    // tap tempo (pure helper meter.tapTempoBpm)
+    tapResetMs: 2000,            // a gap longer than this starts a fresh tap set
+    tapMaxTaps: 4,              // average at most the last N taps
+
+    // look-ahead scheduler ("A Tale of Two Clocks"). scheduleAheadSec MUST exceed
+    // lookaheadMs/1000 (guarded in test-config) so no click slips between pumps.
+    lookaheadMs: 25,            // setTimeout pump period
+    scheduleAheadSec: 0.1,      // schedule any click within this window of ctx.currentTime
+    maxEventsPerPump: 10000,    // runaway-loop guard: hard cap on iterations per pump pass
+
+    // click synth (one short oscillator burst per click, raised-cosine shaped).
+    // sine is weak on phone speakers → triangle default.
+    clickType: 'triangle',
+    clickMs: 30,               // total burst length (attack + release)
+    clickAttackMs: 2,          // raised-cosine rise before the fall
+
+    // per-accent-level voice: oscillator freq (Hz) + peak gain (0..1).
+    // accent loudest/brightest, ghost quietest, 'sub' = subdivision filler click.
+    levels: {
+      accent: { freq: 2000, gain: 1.0 },
+      normal: { freq: 1000, gain: 0.6 },
+      ghost:  { freq: 1000, gain: 0.25 },
+      sub:    { freq: 1500, gain: 0.4 },
+    },
+
+    gain: 0.9,                 // metronome master gain into the shared bus
   },
 });

@@ -7,12 +7,18 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join, relative, sep, extname } from 'node:path';
 
 const WEB = join(dirname(fileURLToPath(import.meta.url)), '..'); // web/
-// Extensions that ship to the browser at runtime. IMPORTANT: extend this set when
-// a new shipped asset type is introduced, or that asset silently escapes the guard.
-const RUNTIME_EXT = new Set(['.html', '.css', '.js', '.webmanifest', '.woff2', '.png', '.svg', '.ico', '.json']);
+// Fail-closed: every file under web/ ships unless explicitly excluded below. A
+// brand-new asset type (e.g. a shipped .wasm/.mp3/.webp) therefore trips the
+// "every shipped asset is precached" check by default instead of silently slipping
+// past it — it must be consciously either precached (added to CORE_ASSETS) or
+// excluded here on purpose. This inverts the previous allowlist-by-extension
+// approach, which let an unlisted new extension escape the guard entirely.
 const EXCLUDE_DIRS = new Set(['test']);
-// package.json is tooling config, not a shipped runtime asset.
+// package.json is tooling config, not a shipped runtime asset. sw.js registers
+// itself; it does not precache itself.
 const EXCLUDE_FILES = new Set(['sw.js', 'package.json']);
+// Non-runtime file types that legitimately live under web/ but never ship.
+const EXCLUDE_EXT = new Set(['.md']);
 
 function walk(dir, out = []) {
   for (const name of readdirSync(dir)) {
@@ -72,7 +78,7 @@ export default function run() {
     const listedSet = new Set(listed || []);
 
     const shipped = walk(WEB)
-      .filter((f) => RUNTIME_EXT.has(extname(f).toLowerCase()))
+      .filter((f) => !EXCLUDE_EXT.has(extname(f).toLowerCase()))
       .filter((f) => !EXCLUDE_FILES.has(relative(WEB, f).split(sep).join('/')))
       .map(toRel);
 

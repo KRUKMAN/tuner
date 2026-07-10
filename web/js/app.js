@@ -8,14 +8,18 @@ import { createPreFilter } from './dsp/filters.js';
 import { Stabilizer } from './dsp/stabilizer.js';
 import { frequencyFromMidi } from './music/theory.js';
 import { TUNINGS, makeCustomTuning, validateTuningStrings } from './music/tunings.js';
+import { defaultTuningIdFor } from './music/instruments.js';
 import { MicCapture } from './audio/capture.js';
-import { ReferenceTone } from './audio/tone.js';
+import { ReferenceTone, raisedCosineCurve } from './audio/tone.js';
 import { TrailBuffer } from './dsp/trail.js';
 import { Dial } from './ui/dial.js';
+import { Strobe } from './ui/strobe.js';
 import { Graph } from './ui/graph.js';
 import { Controls } from './ui/controls.js';
+import { Metronome } from './audio/metronome.js';
+import { MetronomeView } from './ui/metronome-view.js';
+import { makeAdditiveBar, tapTempoBpm } from './music/meter.js';
 
-const DEFAULT_TUNING = { guitar: 'guitar-standard', bass: 'bass-4-standard' };
 const LS_CUSTOM = 'tuner-custom-tunings';
 const LS_LAST = 'tuner-last-tuning';
 
@@ -27,7 +31,17 @@ const state = {
   running: false,
   starting: false,
   tonePlaying: null,
+  lockedString: null,        // pinned string index; null = auto string select
   customTunings: [],         // [{id,name,instrument,strings}]
+  displayMode: CONFIG.displayModeDefault,  // 'dial' | 'strobe'
+  haptic: CONFIG.hapticDefaultOn,
+  chime: CONFIG.chimeDefaultOn,
+  inTuneStreakStartMs: null,  // ms timestamp the current in-tune streak started, null when not in tune
+  inTuneFired: false,         // true once feedback has fired for the current streak
+  uiMode: 'tuner',           // 'tuner' | 'metronome' — mutually exclusive
+  wasRunning: false,         // was the mic running when we left the tuner?
+  metBpm: CONFIG.metronome.bpmDefault,
+  metBar: makeAdditiveBar([4]),
 };
 
 /** @type {AudioContext} */ let audioCtx = null;
@@ -36,11 +50,15 @@ const state = {
 let preFilter = null;
 /** @type {Stabilizer} */   let stabilizer = null;
 /** @type {ReferenceTone} */ let tone = null;
+/** @type {GainNode} */     let masterGain = null;
 let rawBuf = null;
 let procBuf = null;
 let analysisN = 0;
 let rafId = 0;
 let lastStringIndex = null;
+/** @type {Metronome} */ let metronome = null;
+let metRafId = 0;
+let tapTimes = [];
 
 const root = document.documentElement;
 
@@ -80,10 +98,12 @@ function cacheColors() {
   accentInColor = cssVar('--accent-in') || accentInColor;
 }
 function pushGraphColors() {
-  graph.setColors({ accent: accentColor, accentIn: accentInColor, grid: cssVar('--muted-2') || '#556' });
+  const colors = { accent: accentColor, accentIn: accentInColor, grid: cssVar('--muted-2') || '#556' };
+  graph.setColors(colors);
+  strobe.setColors(colors);
 }
 // Status-bar / theme-color per theme (matches --bg-bot in css/styles.css).
-const THEME_COLORS = { dark: '#0b0d10', light: '#efe9df' };
+const THEME_COLORS = { dark: '#0b0d10', light: '#efe9df', contrast: '#000000' };
 function applyThemeColor(theme) {
   const meta = document.getElementById('themeColorMeta');
   if (meta) meta.setAttribute('content', THEME_COLORS[theme] || THEME_COLORS.dark);
@@ -94,10 +114,21 @@ function applyTheme(theme) {
   applyThemeColor(theme);
   cacheColors();
   pushGraphColors();
+  controls.setTheme(theme);
 }
 (() => {
   const saved = store.get('tuner-theme', null);
   if (saved) { root.setAttribute('data-theme', saved); applyThemeColor(saved); }
+})();
+(() => {
+  const dm = store.get('tuner-display-mode', null);
+  if (dm === 'dial' || dm === 'strobe') state.displayMode = dm;
+})();
+(() => {
+  const h = store.get('tuner-haptic', null);
+  if (typeof h === 'boolean') state.haptic = h;
+  const c = store.get('tuner-chime', null);
+  if (typeof c === 'boolean') state.chime = c;
 })();
 
 /* ---------- restore persisted state ---------- */
@@ -108,11 +139,27 @@ loadCustoms();
   const t = last && resolveTuning(last);
   if (t) { state.tuningId = t.id; state.instrument = t.instrument; }
 })();
+// Metronome persistence (Package A store.js). metBar is a plain bar array.
+(() => {
+  const bpm = store.get('tuner-met-bpm', CONFIG.metronome.bpmDefault);
+  if (typeof bpm === 'number') {
+    state.metBpm = Math.max(CONFIG.metronome.bpmMin, Math.min(CONFIG.metronome.bpmMax, Math.round(bpm)));
+  }
+  const bar = store.get('tuner-met-bar', null);
+  if (Array.isArray(bar) && bar.length) state.metBar = bar;
+})();
+function persistMet() {
+  store.set('tuner-met-bpm', state.metBpm);
+  store.set('tuner-met-bar', state.metBar);
+}
 
 /* ---------- UI modules ---------- */
 cacheColors();
 const trail = new TrailBuffer({ capacity: 1024, windowMs: 5000 });
-const dial = new Dial(document.getElementById('dial'), { rangeCents: 50 });
+const dialEl = document.getElementById('dial');
+const strobeEl = document.getElementById('strobe');
+const dial = new Dial(dialEl, { rangeCents: 50 });
+const strobe = new Strobe(strobeEl, {});
 const graph = new Graph(document.getElementById('trail'), { rangeCents: 50, windowMs: 5000, inTuneCents: CONFIG.inTuneCents });
 pushGraphColors();
 graph.resize();
@@ -122,10 +169,16 @@ const controls = new Controls(document, {
   onModeChange: changeInstrument,
   onTuningChange: changeTuning,
   onA4Change: changeA4,
+  onStringSelect: selectString,
+  onAuto: handleAuto,
   onToneToggle: toggleTone,
   onThemeToggle: applyTheme,
   onCustomSave: saveCustom,
   onCustomDelete: deleteCustom,
+  onDisplayModeChange: setDisplayMode,
+  onHapticToggle: setHaptic,
+  onChimeToggle: setChime,
+  onRetry: startMic,
 });
 
 // initial UI reflects (possibly restored) default state
@@ -134,8 +187,101 @@ controls.setCustomTunings(state.customTunings);
 controls.setA4(state.a4);
 controls.setTuning(resolveTuning(state.tuningId), state.a4);
 controls.setMicState('idle');
+setDisplayMode(state.displayMode);
+controls.setHaptic(state.haptic);
+controls.setChime(state.chime);
+controls.setTheme(root.getAttribute('data-theme') || 'dark');
 
-window.addEventListener('resize', () => graph.resize());
+/* ---------- metronome view + mode nav ---------- */
+const metView = new MetronomeView(document, {
+  onStartStop: toggleMetronome,
+  onBpmChange: (bpm) => {
+    state.metBpm = bpm;
+    if (metronome) metronome.setBpm(bpm);
+    persistMet();
+  },
+  onTap: handleTap,
+  onBarChange: (bar) => {
+    state.metBar = bar;
+    if (metronome) metronome.setBar(bar);
+    persistMet();
+  },
+});
+metView.setBpm(state.metBpm);
+metView.setBar(state.metBar);
+
+document.getElementById('navTuner').addEventListener('click', () => setUiMode('tuner'));
+document.getElementById('navMet').addEventListener('click', () => setUiMode('metronome'));
+
+async function toggleMetronome() {
+  await ensureAudioContext();
+  if (metronome.isRunning) {
+    metronome.stop();
+    metView.setRunning(false);
+  } else {
+    metronome.setBpm(state.metBpm);
+    metronome.setBar(state.metBar);
+    metronome.start();
+    metView.setRunning(true);
+  }
+}
+
+function handleTap() {
+  const now = performance.now();
+  if (tapTimes.length && now - tapTimes[tapTimes.length - 1] > CONFIG.metronome.tapResetMs) tapTimes = [];
+  tapTimes.push(now);
+  const bpm = tapTempoBpm(tapTimes);
+  if (bpm != null) {
+    state.metBpm = bpm;
+    metView.setBpm(bpm);
+    if (metronome) metronome.setBpm(bpm);
+    persistMet();
+  }
+}
+
+/** Beat-highlight loop — polls the sample-clock schedule, not wall time. */
+function metLoop() {
+  metRafId = requestAnimationFrame(metLoop);
+  if (!audioCtx || !metronome || !metronome.isRunning) return;
+  const bi = metronome.pollBeat(audioCtx.currentTime);
+  if (bi >= 0) metView.highlightBeat(bi);
+}
+
+function setUiMode(mode) {
+  if (mode === state.uiMode) return;
+  state.uiMode = mode;
+  const toMet = mode === 'metronome';
+
+  document.getElementById('tunerView').hidden = toMet;
+  document.getElementById('metronomeView').hidden = !toMet;
+  const navTuner = document.getElementById('navTuner');
+  const navMet = document.getElementById('navMet');
+  navTuner.classList.toggle('is-on', !toMet);
+  navMet.classList.toggle('is-on', toMet);
+  navTuner.setAttribute('aria-pressed', String(!toMet));
+  navMet.setAttribute('aria-pressed', String(toMet));
+
+  if (toMet) {
+    // Leave the tuner: release the mic + stop its rAF loop; remember whether it ran.
+    state.wasRunning = state.running;
+    cancelAnimationFrame(rafId);
+    if (capture) capture.stop();
+    state.running = false;
+    controls.setMicState('idle');
+    stopTone();
+    cancelAnimationFrame(metRafId);
+    metLoop();
+  } else {
+    // Return to the tuner: STOP the metronome (modes are exclusive), stop its loop,
+    // and restart the mic only if it had been running.
+    if (metronome) metronome.stop();
+    metView.setRunning(false);
+    cancelAnimationFrame(metRafId);
+    if (state.wasRunning) startMic();
+  }
+}
+
+window.addEventListener('resize', () => { graph.resize(); strobe.resize(); });
 
 /* ---------- engine (re)build ---------- */
 function buildEngine() {
@@ -163,15 +309,26 @@ function buildEngine() {
     stabilizer.setA4(state.a4);
     stabilizer.setTuning(t.strings);
   }
+  // reset()/setTuning() don't set lockedString (a fresh Stabilizer never sees it
+  // either, since the ctor call above omits it) — always re-apply explicitly.
+  stabilizer.setLockedString(state.lockedString);
   trail.clear();
   lastStringIndex = null;
+  state.inTuneStreakStartMs = null;
+  state.inTuneFired = false;
 }
 
 /* ---------- mic lifecycle ---------- */
 async function ensureAudioContext() {
   if (!audioCtx) {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    tone = new ReferenceTone({ audioContext: audioCtx });
+    masterGain = audioCtx.createGain();
+    masterGain.gain.value = CONFIG.masterGain;
+    masterGain.connect(audioCtx.destination);
+    tone = new ReferenceTone({ audioContext: audioCtx, destination: masterGain });
+    metronome = new Metronome({ audioContext: audioCtx, destination: masterGain });
+    metronome.setBpm(state.metBpm);
+    metronome.setBar(state.metBar);
   }
   if (audioCtx.state === 'suspended') await audioCtx.resume();
 }
@@ -185,7 +342,7 @@ async function startMic() {
     if (capture) capture.stop();
     const t = resolveTuning(state.tuningId);
     const mode = engineModeFor(t, state.a4);
-    capture = new MicCapture({ audioContext: audioCtx, windowSize: 2 * CONFIG.modes[mode].windowSize });
+    capture = new MicCapture({ audioContext: audioCtx, windowSize: 2 * CONFIG.modes[mode].windowSize, onTrackEnded: handleMicDisconnected });
     buildEngine();
     await capture.start();
     state.running = true;
@@ -193,12 +350,23 @@ async function startMic() {
     cancelAnimationFrame(rafId);
     loop();
   } catch (err) {
-    const denied = err && (err.name === 'NotAllowedError' || err.name === 'SecurityError');
-    controls.setMicState(denied ? 'denied' : 'error',
-      denied ? undefined : `Could not start audio: ${err && err.message ? err.message : err}`);
+    const name = err && err.name;
+    if (name === 'NotAllowedError' || name === 'SecurityError') {
+      controls.setMicState('denied', 'Microphone access is blocked. Allow it for this site in your browser settings, then retry.');
+    } else if (name === 'NotFoundError') {
+      controls.setMicState('notfound', 'No microphone found. Connect one and retry.');
+    } else {
+      controls.setMicState('error', `Could not start audio: ${err && err.message ? err.message : err}`);
+    }
   } finally {
     state.starting = false;
   }
+}
+
+function handleMicDisconnected() {
+  state.running = false;
+  cancelAnimationFrame(rafId);
+  controls.setMicState('disconnected', 'Microphone disconnected. Tap Retry to reconnect.');
 }
 
 /* ---------- controls handlers ---------- */
@@ -207,17 +375,37 @@ function selectTuning(id) {
   if (!t) return;
   state.tuningId = id;
   state.instrument = t.instrument;
+  // New tuning may have a different string count — the old pin can't carry over.
+  state.lockedString = null;
   rememberTuning(id);
   controls.setInstrument(t.instrument);
+  controls.setPinned(null);
   controls.setTuning(t, state.a4);
   stopTone();
   if (state.running) buildEngine();
 }
 
+/** Tap a string circle: pin detection to it, or unpin if it's already pinned. */
+function selectString(index) {
+  state.lockedString = state.lockedString === index ? null : index;
+  if (stabilizer) stabilizer.setLockedString(state.lockedString);
+  controls.setPinned(state.lockedString);
+}
+
+/** Header AUTO/PINNED button while the mic is running: unpin back to auto select. */
+function handleAuto() {
+  state.lockedString = null;
+  if (stabilizer) stabilizer.setLockedString(null);
+  controls.setPinned(null);
+}
+
 function changeInstrument(instrument) {
   state.instrument = instrument;
-  selectTuning(DEFAULT_TUNING[instrument]);
-  controls.setInstrument(instrument);
+  // selectTuning() already syncs the Controls instrument UI internally (the
+  // resolved default tuning's instrument always equals this one) — a second,
+  // explicit sync call here was redundant and drove _renderTuningList() a third
+  // time per switch.
+  selectTuning(defaultTuningIdFor(instrument));
 }
 
 function changeTuning(tuningId) { selectTuning(tuningId); }
@@ -233,6 +421,16 @@ function changeA4(a4) {
     const midi = t && t.strings[state.tonePlaying];
     if (midi != null) tone.play(frequencyFromMidi(midi, a4));
   }
+}
+
+/** @param {'dial'|'strobe'} mode */
+function setDisplayMode(mode) {
+  state.displayMode = mode === 'strobe' ? 'strobe' : 'dial';
+  store.set('tuner-display-mode', state.displayMode);
+  dialEl.hidden = state.displayMode !== 'dial';
+  strobeEl.hidden = state.displayMode !== 'strobe';
+  if (state.displayMode === 'strobe') { strobe.reset(); strobe.resize(); }
+  controls.setDisplayModeUI(state.displayMode);
 }
 
 function toggleTone(index) {
@@ -252,11 +450,56 @@ function stopTone() {
   controls.setTonePlaying(null);
 }
 
+function setHaptic(on) {
+  state.haptic = !!on;
+  store.set('tuner-haptic', state.haptic);
+  controls.setHaptic(state.haptic);
+}
+
+function setChime(on) {
+  state.chime = !!on;
+  store.set('tuner-chime', state.chime);
+  controls.setChime(state.chime);
+}
+
+/** Fires haptic + a visual dial snap + optional chime; called once per debounced in-tune edge. */
+function triggerInTuneFeedback() {
+  if (state.haptic && navigator.vibrate) {
+    try { navigator.vibrate(CONFIG.hapticVibrateMs); } catch { /* ignore */ }
+  }
+  controls.pulseInTune();
+  if (state.chime) playChime();
+}
+
+/** One-shot soft chime: a raised-cosine attack/release envelope through the master bus. */
+function playChime() {
+  if (!audioCtx || !masterGain) return;
+  const ctx = audioCtx;
+  const now = ctx.currentTime;
+  const osc = ctx.createOscillator();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(CONFIG.chimeFrequencyHz, now);
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0, now);
+  osc.connect(gain);
+  gain.connect(masterGain);
+  const attack = CONFIG.chimeAttackMs / 1000;
+  const release = CONFIG.chimeReleaseMs / 1000;
+  gain.gain.setValueCurveAtTime(raisedCosineCurve(CONFIG.chimeGain, true), now, attack);
+  gain.gain.setValueCurveAtTime(raisedCosineCurve(CONFIG.chimeGain, false), now + attack, release);
+  osc.start(now);
+  osc.stop(now + attack + release);
+  osc.onended = () => {
+    try { osc.disconnect(); } catch { /* ignore */ }
+    try { gain.disconnect(); } catch { /* ignore */ }
+  };
+}
+
 /* ---------- custom tunings ---------- */
-function saveCustom(midiArray, name, id) {
+function saveCustom(midiArray, name, id, instrument) {
   const strings = validateTuningStrings(midiArray);
   const tid = id || 'custom-' + Date.now();
-  const t = makeCustomTuning(strings, (name || 'Custom').slice(0, 24), tid);
+  const t = makeCustomTuning(strings, (name || 'Custom').slice(0, 24), tid, instrument);
   const i = state.customTunings.findIndex((x) => x.id === tid);
   if (i >= 0) state.customTunings[i] = t; else state.customTunings.push(t);
   saveCustoms();
@@ -267,7 +510,7 @@ function deleteCustom(id) {
   state.customTunings = state.customTunings.filter((t) => t.id !== id);
   saveCustoms();
   controls.setCustomTunings(state.customTunings);
-  if (state.tuningId === id) selectTuning(DEFAULT_TUNING[state.instrument]);
+  if (state.tuningId === id) selectTuning(defaultTuningIdFor(state.instrument));
 }
 
 /* ---------- render loop ---------- */
@@ -284,9 +527,23 @@ function loop() {
   const ds = stabilizer.update(frame, now);
 
   const active = ds.status === 'active' || ds.status === 'hold';
+
+  // In-tune feedback: fire once per sustained false->true streak (debounced so
+  // single-frame stabilizer jitter right at the threshold can't retrigger it).
+  if (ds.inTune) {
+    if (state.inTuneStreakStartMs == null) state.inTuneStreakStartMs = now;
+    if (!state.inTuneFired && now - state.inTuneStreakStartMs >= CONFIG.inTuneFeedbackDebounceMs) {
+      state.inTuneFired = true;
+      triggerInTuneFeedback();
+    }
+  } else {
+    state.inTuneStreakStartMs = null;
+    state.inTuneFired = false;
+  }
+
   trail.push(now, active && ds.cents != null ? ds.cents : NaN, ds.confidence, ds.inTune);
   graph.render(trail, now);
-  dial.render(ds);
+  if (state.displayMode === 'strobe') strobe.render(ds, now); else dial.render(ds);
   controls.update(ds);
   if (ds.stringIndex !== lastStringIndex) {
     controls.setActiveString(ds.stringIndex);
@@ -296,5 +553,7 @@ function loop() {
 
 window.addEventListener('beforeunload', () => {
   cancelAnimationFrame(rafId);
+  cancelAnimationFrame(metRafId);
+  if (metronome) metronome.stop();
   if (capture) capture.stop();
 });

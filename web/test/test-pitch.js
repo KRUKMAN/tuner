@@ -121,6 +121,27 @@ export default function run() {
       runPureNoiseCase(sr, 'guitar', seed++);
     });
   }
+
+  suite('pitch: harmonicity renormalizes when a multiple falls outside the window', () => {
+    // REGRESSION. Harmonicity samples the NSDF at 2x and 3x the detected period. For the
+    // lowest bass notes the 3x lag exceeds the analysis window (B0 at 48 kHz: p ≈ 1555,
+    // 3p = 4665 > N = 4096), so that term is unavailable. Blending it in as a hard 0
+    // capped B0's harmonicity at ~0.60 — barely above harmonicityMin (0.55), leaving the
+    // hardest string to tune with no rejection headroom and a permanently dim readout.
+    const b0 = detectThroughPipeline(48000, 'bass', (t) => harmonicTone(30.87, 48000, t, 0.5));
+    assert(b0.harmonicity > 0.9, `B0 (3p outside window) harmonicity > 0.9 (got ${num(b0.harmonicity)})`);
+
+    // A note whose 3x lag DOES fit keeps the blended score — the fix must not inflate it.
+    const g2 = detectThroughPipeline(48000, 'bass', (t) => harmonicTone(98.0, 48000, t, 0.5));
+    assert(g2.harmonicity > 0.9, `G2 (3p inside window) harmonicity > 0.9 (got ${num(g2.harmonicity)})`);
+
+    // Broadband noise must still score far below the reject gate.
+    const noise = detectThroughPipeline(48000, 'bass', (t) => whiteNoise(48000, t, 0.3, 4242));
+    assert(
+      noise.harmonicity < CONFIG.harmonicityMin || noise.frequency === -1,
+      `white noise stays below harmonicityMin or is rejected (harm=${num(noise.harmonicity)}, f=${num(noise.frequency)})`,
+    );
+  });
 }
 
 /** @param {number} x @returns {string} */

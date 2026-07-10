@@ -4,7 +4,7 @@
  * @typedef {Object} Tuning
  * @property {string} id          e.g. 'guitar-standard'
  * @property {string} name        Display name.
- * @property {'guitar'|'bass'} instrument
+ * @property {string} instrument  registry id ('guitar','bass','ukulele','mandolin','violin','banjo','baritone')
  * @property {number[]} strings   MIDI numbers, index 0 = LOWEST-pitched string.
  */
 
@@ -25,10 +25,19 @@ export const TUNINGS = Object.freeze({
   'bass-4-drop-d':     { id: 'bass-4-drop-d',     name: '4-String Drop D',   instrument: 'bass',   strings: [26, 33, 38, 43] },             // D1 A1 D2 G2
   'bass-5-standard':   { id: 'bass-5-standard',   name: '5-String Standard', instrument: 'bass',   strings: [23, 28, 33, 38, 43] },         // B0 E1 A1 D2 G2
   'bass-6-standard':   { id: 'bass-6-standard',   name: '6-String Standard', instrument: 'bass',   strings: [23, 28, 33, 38, 43, 48] },     // B0 E1 A1 D2 G2 C3
+  // --- Package B: additional instruments. DSP profile is still frequency-derived
+  //     by engineModeFor() in app.js — these need only a row + presets, no mode change.
+  //     Reentrant instruments are stored in PITCH order (spec §4.1 simplification).
+  'ukulele-standard':  { id: 'ukulele-standard',  name: 'Standard (reentrant)', instrument: 'ukulele',  strings: [60, 64, 67, 69] },         // C4 E4 G4 A4 (physical gCEA)
+  'ukulele-low-g':     { id: 'ukulele-low-g',     name: 'Low G',                instrument: 'ukulele',  strings: [55, 60, 64, 69] },         // G3 C4 E4 A4
+  'mandolin-standard': { id: 'mandolin-standard', name: 'Standard GDAE',        instrument: 'mandolin', strings: [55, 62, 69, 76] },         // G3 D4 A4 E5
+  'violin-standard':   { id: 'violin-standard',   name: 'Standard GDAE',        instrument: 'violin',   strings: [55, 62, 69, 76] },         // G3 D4 A4 E5
+  'banjo-open-g':      { id: 'banjo-open-g',      name: 'Open G (5-string)',    instrument: 'banjo',    strings: [50, 55, 59, 62, 67] },     // D3 G3 B3 D4 G4 (physical gDGBD)
+  'baritone-standard': { id: 'baritone-standard', name: 'Standard B–B',         instrument: 'baritone', strings: [35, 40, 45, 50, 54, 59] }, // B1 E2 A2 D3 F#3 B3
 });
 
 /**
- * @param {'guitar'|'bass'} instrument
+ * @param {string} instrument
  * @returns {Tuning[]} in catalogue order
  */
 export function tuningsFor(instrument) {
@@ -39,7 +48,7 @@ export function tuningsFor(instrument) {
  * @param {number[]} midiArray  arbitrary per-string MIDI numbers, low->high
  * @param {string} [name='Custom']
  * @param {string} [id='custom']            unique id for saved customs (default preserves old behavior)
- * @param {'guitar'|'bass'} [instrument]    overrides the min-midi inference when provided
+ * @param {string} [instrument]             overrides the min-midi inference when provided
  * @returns {Tuning}
  */
 export function makeCustomTuning(midiArray, name = 'Custom', id = 'custom', instrument) {

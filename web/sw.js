@@ -5,7 +5,7 @@
 //
 // CACHE-LIST DISCIPLINE: CORE_ASSETS is hand-maintained. When a module, asset, or
 // font is added or removed, update this list AND bump CACHE. test-sw-assets guards it.
-const CACHE = 'tuner-cache-v2';
+const CACHE = 'tuner-cache-v6';
 
 const CORE_ASSETS = [
   './',
@@ -17,19 +17,28 @@ const CORE_ASSETS = [
   './js/app.js',
   './js/config.js',
   './js/store.js',
+  './js/theme-cycle.js',
   './js/audio/capture.js',
   './js/audio/tone.js',
+  './js/audio/metronome.js',
   './js/dsp/fft.js',
   './js/dsp/filters.js',
   './js/dsp/mpm.js',
   './js/dsp/one-euro.js',
   './js/dsp/stabilizer.js',
   './js/dsp/trail.js',
+  './js/music/instruments.js',
   './js/music/theory.js',
   './js/music/tunings.js',
+  './js/music/meter.js',
   './js/ui/controls.js',
   './js/ui/dial.js',
+  './js/ui/focus-order.js',
   './js/ui/graph.js',
+  './js/ui/metronome-view.js',
+  './js/ui/motion.js',
+  './js/ui/note-status.js',
+  './js/ui/strobe.js',
   './icons/favicon-32.png',
   './icons/apple-touch-icon.png',
   './icons/icon-192.png',
