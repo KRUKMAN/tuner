@@ -162,6 +162,23 @@ body {
   overflow: hidden;
 }
 
+/* The mode views are flex CHILDREN of .app and flex CONTAINERS for their own
+   contents. Both halves matter. `.app` is a `min-height: 100dvh` flex column, and
+   the tuner's vertical rhythm comes from two `.spacer { flex: 1 1 0 }` elements
+   that push the dial to the optical centre. When the Tuner|Metronome mode nav was
+   added, those spacers were wrapped in `#tunerView` — a plain block with no rules
+   — so (a) the wrapper never grew to fill .app, and (b) `flex` on the spacers went
+   inert, since flex only applies to children of a flex container. The whole tuner
+   collapsed into the top ~1/3 of the viewport. `min-height: 0` lets the wrapper
+   shrink below its content instead of overflowing the `overflow: hidden` shell. */
+#tunerView,
+.met-view {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .spacer { flex: 1 1 0; min-height: 12px; }
 .gap { height: 30px; }
 

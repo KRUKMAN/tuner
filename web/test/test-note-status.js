@@ -1,7 +1,7 @@
 // Node. Cases for js/ui/note-status.js — the pure DisplayState -> text formatter
 // shared by the visual state label and the throttled spoken-note announcement.
 import { suite, assert } from './assert.js';
-import { spokenNoteName, stateLabelFor, announcementFor } from '../js/ui/note-status.js';
+import { spokenNoteName, stateLabelFor, announcementFor, steadyRound } from '../js/ui/note-status.js';
 
 function ds(overrides) {
   return {
@@ -22,6 +22,33 @@ export default function run() {
   suite('stateLabelFor: blank states', () => {
     assert(stateLabelFor(ds({ status: 'silent', noteName: null })) === '', 'silent -> empty');
     assert(stateLabelFor(ds({ status: 'rejected', noteName: null })) === '', 'rejected -> empty');
+  });
+
+  suite('steadyRound: the integer readout does not churn on a drifting value', () => {
+    const DB = 0.4;
+    assert(steadyRound(3.2, null, DB) === 3, 'first value rounds normally');
+    assert(steadyRound(3.4, 3, DB) === 3, 'same integer stays');
+    // Crossing the .5 midpoint is NOT enough on its own — that is exactly what flickered.
+    assert(steadyRound(3.6, 3, DB) === 3, 'just past the midpoint holds the old integer');
+    assert(steadyRound(3.85, 3, DB) === 3, 'still holds at 0.85 away');
+    assert(steadyRound(3.95, 3, DB) === 4, 'switches once it clears 0.5 + deadband');
+    assert(steadyRound(2.05, 3, DB) === 2, 'switches downward symmetrically');
+    assert(steadyRound(-0.95, 0, DB) === -1, 'works across zero');
+
+    // A value dithering around a boundary must not toggle the display at all.
+    let shown = steadyRound(2.5, null, DB);
+    let changes = 0;
+    for (const v of [2.45, 2.55, 2.48, 2.52, 2.47, 2.53]) {
+      const next = steadyRound(v, shown, DB);
+      if (next !== shown) changes++;
+      shown = next;
+    }
+    assert(changes === 0, `dithering across a .5 boundary never re-renders (got ${changes} changes)`);
+
+    // But a genuine drift must still be followed, not frozen forever.
+    shown = steadyRound(0, null, DB);
+    for (const v of [1, 2, 3, 4, 5]) shown = steadyRound(v, shown, DB);
+    assert(shown === 5, `a real 5-cent drift is followed (got ${shown})`);
   });
 
   suite('stateLabelFor: in-tune carries a non-colour (checkmark) cue', () => {

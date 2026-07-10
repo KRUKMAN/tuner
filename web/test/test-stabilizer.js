@@ -378,6 +378,78 @@ export default function run() {
     assert(ds.midi === 59, `B3 -45c still reads B3 (got ${ds.midi})`);
   });
 
+  suite('stabilizer(v2): a badly-flat string read at its 2nd harmonic snaps back down', () => {
+    // REGRESSION (found on a real bass recording while turning a peg). A bass fundamental
+    // is weak, so MPM often reports the 2nd harmonic. With the G string ~45 cents flat the
+    // detector reads ~191 Hz; nothing in the bass tuning is near 191, so nearestString maps
+    // it to G2 at +1152 cents and the tuner displays "G2, +1150 cents" at full confidence.
+    // The snap must halve it. targetSnapCents had to widen past 45 for that, which is only
+    // safe because of the snapImproveCents margin (see the sharp-string suites).
+    const bass = [28, 33, 38, 43]; // E1 A1 D2 G2
+    const G2 = 440 * Math.pow(2, (43 - 69) / 12);
+    const flatG2 = G2 * Math.pow(2, -45 / 1200);
+
+    const s = new Stabilizer({ config: CONFIG, a4: 440, tuning: bass, lockedString: null });
+    let t = 0;
+    let ds;
+    for (let i = 0; i < 10; i++) { ds = s.update(hframe(flatG2 * 2, 0.96, -20, 0.94), t); t += DT; }
+    assert(ds.midi === 43, `2nd harmonic of a flat G2 reads as G2 midi 43 (got ${ds.midi})`);
+    assertClose(ds.cents, -45, 6, 'shows the string ~45 cents flat, not +1150');
+  });
+
+  suite('stabilizer(v2): a string 50-99 cents sharp is never relabeled', () => {
+    // REGRESSION. snapGuardCents (50) only blocks the snap for readings WITHIN 50 cents of a
+    // string. Between 50 and 99 cents sharp the guard lets the snap run, and a sharp top
+    // string's f/3 lands just under the old 45-cent window -- so it was relabeled anyway.
+    // Caught by extending the detune sweep past +/-45; snapImproveCents closes it.
+    const detuned = (midi, cents) => 440 * Math.pow(2, (midi - 69) / 12) * Math.pow(2, cents / 1200);
+    const guitar = [40, 45, 50, 55, 59, 64];
+    for (const cents of [55, 60, 70, 90, -55, -70, -90]) {
+      const s = new Stabilizer({ config: CONFIG, a4: 440, tuning: guitar, lockedString: null });
+      let t = 0;
+      let ds;
+      for (let i = 0; i < 12; i++) { ds = s.update(hframe(detuned(59, cents), 0.99, -20, 0.99), t); t += DT; }
+      assert(ds.midi === 59, `B3 ${cents > 0 ? '+' : ''}${cents}c stays B3 (got midi ${ds.midi})`);
+    }
+    // The same hole existed on the 7-string's B3 (index 4) — it read as its low B1.
+    const seven = [35, 40, 45, 50, 55, 59, 64];
+    for (const cents of [-55, -70, -90]) {
+      const s = new Stabilizer({ config: CONFIG, a4: 440, tuning: seven, lockedString: null });
+      let t = 0;
+      let ds;
+      for (let i = 0; i < 12; i++) { ds = s.update(hframe(detuned(55, cents), 0.99, -20, 0.99), t); t += DT; }
+      assert(ds.midi === 55, `7-string G3 ${cents}c stays G3 (got midi ${ds.midi})`);
+    }
+  });
+
+  suite('stabilizer(v2): a period-x4 subharmonic is corrected, not shown as another string', () => {
+    // REGRESSION (found on real recorded plucks). Deep in a pluck's decay (~-65 dBFS)
+    // MPM locks onto FOUR times the period: a ringing B3 (246.94 Hz) reads as 61.7 Hz.
+    // 61.7 Hz is nearest the E2 string (-524 cents), so without an f*4 candidate in the
+    // octave-sanity check the median is poisoned, the reference flips to E2, and the
+    // tuner confidently displays "E, -525 cents" (then +1857) while a B is ringing.
+    const B3 = 246.94;
+    const s = new Stabilizer({
+      config: CONFIG, a4: 440, tuning: [40, 45, 50, 55, 59, 64], lockedString: null,
+    });
+    let t = 0;
+    let ds;
+
+    for (let i = 0; i < 6; i++) { ds = s.update(hframe(B3, 0.95, -20, 0.9), t); t += DT; }
+    assert(ds.midi === 59, `established B3 midi 59 (got ${ds.midi})`);
+
+    // Six consecutive x4-subharmonic frames — plenty to flip the median and the
+    // note-name hysteresis if they are not corrected back up.
+    let worstCents = 0;
+    for (let i = 0; i < 6; i++) {
+      ds = s.update(hframe(B3 / 4, 0.95, -20, 0.9), t); t += DT;
+      if (ds.status === 'active') worstCents = Math.max(worstCents, Math.abs(ds.cents));
+    }
+    assert(ds.midi === 59, `x4 subharmonic corrected back to B3, NOT E2 (40) — got ${ds.midi}`);
+    assert(ds.stringIndex === 4, `still highlights the B string (index 4), got ${ds.stringIndex}`);
+    assert(worstCents < 60, `never displays an absurd cents value (worst |cents| was ${worstCents.toFixed(0)})`);
+  });
+
   suite('stabilizer(v2): guarded snap still rescues a genuine octave error', () => {
     // Bass 4-string. The detector reports A2 (110 Hz) — an octave-up error off the A1
     // string (55 Hz). 110 Hz sits ~200 cents from the nearest string (G2), well outside
