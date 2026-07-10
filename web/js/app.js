@@ -62,6 +62,28 @@ let tapTimes = [];
 
 const root = document.documentElement;
 
+// ?debug live signal readout — reveals WHY a note is or isn't detected on-device
+// (the numbers that decide the gate/clarity/harmonicity, which we otherwise can't see
+// on a phone). Off unless the URL contains ?debug.
+const DEBUG = /[?&]debug\b/.test(location.search);
+const dbgEl = document.getElementById('dbg');
+if (DEBUG && dbgEl) dbgEl.hidden = false;
+function renderDebug(frame, ds) {
+  if (!DEBUG || !dbgEl) return;
+  const c = CONFIG;
+  const openDb = c.adaptiveGate
+    ? Math.min(c.gateOpenDbMax, Math.max(c.gateOpenDbMin, ds.noiseFloorDb + c.gateOpenAboveFloorDb))
+    : c.gateOpenDb;
+  const n = (x, d = 1) => (Number.isFinite(x) ? x.toFixed(d) : '–');
+  const gate = ds.rmsDb >= openDb ? 'OPEN' : 'shut';
+  const harm = frame.harmonicity != null ? frame.harmonicity : 1;
+  dbgEl.textContent =
+    `status ${ds.status}   ${ds.noteName != null ? ds.noteName + (ds.octave ?? '') + ' ' + n(ds.cents, 1) + 'c' : '—'}\n` +
+    `level ${n(ds.rmsDb, 0)}dBFS   floor ${n(ds.noiseFloorDb, 0)}   gate@${n(openDb, 0)} ${gate}\n` +
+    `clarity ${n(ds.clarity, 2)} (need ${c.clarityThreshold})   harm ${n(harm, 2)} (need ${c.harmonicityMin})\n` +
+    `conf ${n(ds.confidence, 2)}   rawHz ${n(ds.rawFrequency, 1)}   sr ${audioCtx ? audioCtx.sampleRate : '–'}`;
+}
+
 /* ---------- tuning resolution + persistence ---------- */
 function resolveTuning(id) {
   return TUNINGS[id] || state.customTunings.find((t) => t.id === id) || null;
@@ -525,6 +547,7 @@ function loop() {
   const now = performance.now();
   const frame = detector.detect(procBuf.subarray(procBuf.length - analysisN));
   const ds = stabilizer.update(frame, now);
+  renderDebug(frame, ds);
 
   const active = ds.status === 'active' || ds.status === 'hold';
 
