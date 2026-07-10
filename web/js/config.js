@@ -103,11 +103,23 @@ export const CONFIG = deepFreeze({
   detectLpfHarmonics: 5,         // detection LPF = maxTargetFundamental * this
   detectLpfMinHz: 500,           // floor so high strings keep enough harmonics
   harmonicityMin: 0.55,          // reject frames below this (broadband buzz/noise)
-  targetSnapCents: 45,           // tuning-mode octave snap window to a target string
+  targetSnapCents: 100,          // tuning-mode octave snap: how close a candidate octave of
+                                 // the reading must land to a target string. Must exceed how
+                                 // far out of tune a string can be WHILE YOU TUNE IT: a bass
+                                 // G2 read at its 2nd harmonic only snaps back if half of it
+                                 // still lands inside this window. Safe to widen only because
+                                 // of snapImproveCents below.
   snapGuardCents: 50,            // only octave-snap a reading this far from EVERY string.
                                  // Within it the reading IS that string, merely out of
                                  // tune — relabeling would map a slightly-sharp B3 onto
                                  // E2, since B3 sits a near-exact twelfth (x3) above E2.
+  snapImproveCents: 150,         // ...and only if the snap IMPROVES the fit by more than this.
+                                 // A true octave error improves by ~1100 cents; a B3 that is
+                                 // merely 60 cents sharp improves by 2 (its f/3 sits 58 cents
+                                 // from E2). Without this margin, a window wide enough to
+                                 // rescue a badly-flat string's 2nd harmonic also relabels
+                                 // every sharp top string. 150 is the ceiling: the genuine
+                                 // "A1 detected as A2" rescue improves by exactly 200.
 
   // --- Package D: master gain bus -------------------------------------------
   masterGain: 0.9,                // master bus gain (headroom so tone + chime can't clip)

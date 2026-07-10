@@ -214,7 +214,16 @@ export class Stabilizer {
           const a = Math.abs(nearestString(cand, this.tuning, this.a4).cents);
           if (a < bestAbs) { bestAbs = a; bestF = cand; }
         }
-        if (bestAbs <= c.targetSnapCents) f = bestF;
+        // Snap only if it is a big WIN, not a marginal one. A genuine octave error
+        // improves the fit by ~1100 cents; a string that is merely 60 cents sharp
+        // "improves" by 2 (a sharp B3's f/3 sits 58 cents from E2 vs 60 to B3 itself),
+        // and relabeling it would be the very bug snapGuardCents exists to stop. This
+        // margin is what lets targetSnapCents be wide enough to rescue a badly-flat
+        // string read at its 2nd harmonic -- the common case on a bass, whose
+        // fundamental is weak. Applies to every instrument: one shared code path.
+        if (bestAbs <= c.targetSnapCents && Math.abs(direct.cents) - bestAbs > c.snapImproveCents) {
+          f = bestF;
+        }
       }
     }
 
