@@ -3,11 +3,12 @@
 // focus movement, aria-live announcements, or keyboard events (no jsdom in this
 // repo; see Global Constraints). Real behavior is verified manually per-task.
 //
-// Adapted from the plan's illustrative version to match the tree as it actually
-// exists after Packages B/D/E: the instrument segment already ships a correct,
-// more idiomatic role="tablist" + per-chip role="tab"/aria-selected pattern
-// (Package B) rather than the plan's assumed role="group"/aria-pressed — this
-// guard checks for the pattern that is actually on disk, not the plan's guess.
+// Accessibility fix pass (Package F): the instrument segment previously shipped
+// role="tablist" + per-chip role="tab"/aria-selected (Package B), but that pattern
+// was incomplete — no tabpanel relationship, no arrow-key navigation, no roving
+// tabindex — so AT announced "tab, 1 of 7" while Left/Right did nothing. It was
+// dropped to role="group" (accessible name) + aria-pressed per chip, which
+// honestly describes what the controls do; this guard checks for that pattern.
 import { suite, assert } from './assert.js';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -19,6 +20,8 @@ export default function run() {
   const html = readFileSync(join(WEB, 'index.html'), 'utf8');
   const controlsJs = readFileSync(join(WEB, 'js/ui/controls.js'), 'utf8');
   const metViewJs = readFileSync(join(WEB, 'js/ui/metronome-view.js'), 'utf8');
+  const cssText = readFileSync(join(WEB, 'css/styles.css'), 'utf8');
+  const appJs = readFileSync(join(WEB, 'js/app.js'), 'utf8');
 
   suite('a11y markup: spoken-note live region exists', () => {
     assert(html.includes('id="liveRegion"'), 'index.html declares #liveRegion');
@@ -38,11 +41,11 @@ export default function run() {
     assert(controlsJs.includes("setAttribute('aria-label'"), 'controls.js sets aria-label on dynamically-created controls');
   });
 
-  suite('a11y markup: instrument segment is a labelled tab pattern (Package B, adapted)', () => {
-    assert(html.includes('id="instrumentSeg" role="tablist" aria-label="Instrument"'),
-      '#instrumentSeg has role="tablist" aria-label="Instrument"');
-    assert(controlsJs.includes("setAttribute('role', 'tab')"), 'instrument chips carry role="tab"');
-    assert(controlsJs.includes("setAttribute('aria-selected'"), 'instrument chips carry aria-selected');
+  suite('a11y markup: instrument segment is a labelled group of pressed-state chips', () => {
+    assert(html.includes('id="instrumentSeg" role="group" aria-label="Instrument"'),
+      '#instrumentSeg has role="group" aria-label="Instrument" (not role="tablist" — see file header)');
+    assert(!controlsJs.includes("setAttribute('role', 'tab')"), 'instrument chips no longer carry role="tab"');
+    assert(!html.includes('role="tablist"'), 'no role="tablist" remains anywhere in the shipped markup');
   });
 
   suite('a11y markup: string circles carry pin state + label', () => {
@@ -100,5 +103,49 @@ export default function run() {
       'meter editor toggle declares aria-controls (it is an inline disclosure, not a modal — see report)');
     assert(metViewJs.includes("setAttribute('aria-expanded'"),
       'metronome-view.js keeps aria-expanded in sync with the editor disclosure state');
+  });
+
+  suite('a11y markup: sheet is a top-level overlay, isolated from the header/view background', () => {
+    assert(html.includes('<header class="hdr" id="hdr">'), '<header> has id="hdr" so controls.js can target it for background isolation');
+    assert(controlsJs.includes("this.header = this.$('hdr')"), 'controls.js grabs the header element');
+    assert(controlsJs.includes("this.tunerView = this.$('tunerView')") && controlsJs.includes("this.metronomeView = this.$('metronomeView')"),
+      'controls.js grabs both mutually-exclusive view wrappers');
+    assert(controlsJs.includes('_setBackgroundInert'), 'openSheet()/closeSheet() isolate the background via a dedicated helper');
+    assert(controlsJs.includes('el.inert = hidden'), 'background containers are toggled inert');
+    assert(controlsJs.includes("el.setAttribute('aria-hidden', 'true')"), 'background containers also get aria-hidden (inert support/behaviour varies by AT)');
+  });
+
+  suite('a11y markup: mic status is announced as an alert, not silently', () => {
+    assert(html.includes('id="overlayStatus"') && html.includes('role="alert"'),
+      '#overlayStatus has role="alert" so a newly-written error/status is announced');
+  });
+
+  suite('a11y markup: live-region announcements are suppressed while the sheet is open', () => {
+    assert(controlsJs.includes('_sheetOpen'), 'controls.js tracks sheet-open state');
+    assert(controlsJs.includes('!this._sheetOpen'),
+      'update(ds) guards the live-region WRITE on _sheetOpen, independent of aria-hidden (behaviour varies across screen readers)');
+  });
+
+  suite('a11y markup: pinned string label flips to "tap to unpin"', () => {
+    assert(controlsJs.includes('tap to unpin'), 'a pinned string announces "tap to unpin", not the stale pin label');
+    assert(controlsJs.includes('tap to pin pitch detection to this string'), 'an unpinned string still announces "tap to pin"');
+  });
+
+  suite('a11y markup: reduced motion also suppresses the metronome beat-flash transform', () => {
+    assert(cssText.includes('.met-pill.is-active { transform: none; box-shadow: none; }'),
+      'reduced-motion block sets .met-pill.is-active transform/box-shadow to none (not just the transition)');
+  });
+
+  suite('a11y markup: an explicit :focus-visible ring exists using theme tokens', () => {
+    assert(cssText.includes(':focus-visible {') && cssText.includes('outline: 3px solid var(--accent);'),
+      ':focus-visible is styled using the --accent design token (theme-aware across dark/light/contrast)');
+    assert(cssText.includes('.str:focus-visible'),
+      '.str gets a box-shadow-based focus ring so it stacks with (rather than overwrites) the pinned-state outline');
+  });
+
+  suite('a11y markup: redundant setInstrument() call removed from changeInstrument()', () => {
+    const fn = appJs.slice(appJs.indexOf('function changeInstrument'), appJs.indexOf('function changeTuning'));
+    const calls = (fn.match(/controls\.setInstrument\(/g) || []).length;
+    assert(calls === 0, 'changeInstrument() no longer calls controls.setInstrument() directly — selectTuning() already does');
   });
 }

@@ -26,6 +26,10 @@ export function spokenNoteName(noteName) {
  * The leading "✓" is a non-colour (shape) redundant cue for the in-tune state —
  * see spec §8 "Redundant (non-colour) in-tune cue" — the accent-colour swap
  * elsewhere (dial ring, string circle) stays, this text is an additional signal.
+ *
+ * This is also reused verbatim by announcementFor() below as the "coarse band"
+ * component of its throttle key: in-tune / ALMOST-flat / ALMOST-sharp / FLAT /
+ * SHARP is exactly the granularity worth a fresh spoken cue while turning a peg.
  * @param {DisplayState} ds
  * @returns {string} '' when there's nothing to show (blank/silent/rejected).
  */
@@ -39,13 +43,24 @@ export function stateLabelFor(ds) {
 }
 
 /**
- * Throttled spoken-note announcement for the aria-live region. Only returns a
- * fresh announcement when the note (name+octave) or the in-tune state changes —
- * NEVER per animation frame (controls.js#update(ds) runs ~60x/sec via the rAF
- * loop in app.js#loop()). Going blank (mic drops out / signal rejected) clears
- * the tracked key but is itself silent — no "listening…" chatter. The next
- * active reading, even of the identical note, announces again: from a listener's
- * perspective the sound stopped and started over, which is worth saying.
+ * Throttled spoken-note announcement for the aria-live region. A fresh
+ * announcement fires only when the note (name+octave) changes OR the coarse
+ * tuning band changes — in-tune / ALMOST flat / ALMOST sharp / FLAT / SHARP,
+ * the same bands stateLabelFor() computes above — NEVER per animation frame
+ * (controls.js#update(ds) runs ~60x/sec via the rAF loop in app.js#loop()).
+ * Folding the band into the key means a peg turn that crosses e.g. FLAT into
+ * ALMOST re-announces (a fresh direction/magnitude cue for a screen-reader
+ * user with the chime off and no haptics), while jitter that stays inside one
+ * band stays silent — a handful of extra cues per turn, not per-cent thrash.
+ * Going blank (mic drops out / signal rejected) clears the tracked key but is
+ * itself silent — no "listening…" chatter. The next active reading, even of
+ * the identical note+band, announces again: from a listener's perspective the
+ * sound stopped and started over, which is worth saying.
+ *
+ * The octave is included in the spoken text (not just the key): "E, in tune"
+ * is ambiguous between low E (E2) and high E (E4) on a 6-string guitar — an
+ * octave-detection error is invisible to a screen-reader user without it even
+ * though it's obvious to a sighted one (the on-screen octave digit).
  * @param {DisplayState} ds
  * @param {string|null} prevKey  the `.key` from the last call that returned non-null
  * @returns {{text: string|null, key: string|null} | null} null = nothing changed
@@ -53,12 +68,12 @@ export function stateLabelFor(ds) {
 export function announcementFor(ds, prevKey) {
   const active = ds.status === 'active' || ds.status === 'hold';
   const key = active && ds.noteName != null
-    ? `${ds.noteName}${ds.octave}:${ds.inTune ? 'in' : 'out'}`
+    ? `${ds.noteName}${ds.octave}:${stateLabelFor(ds)}`
     : null;
   if (key === prevKey) return null;
   if (key === null) return { text: null, key: null };
 
-  const spoken = spokenNoteName(ds.noteName);
+  const spoken = `${spokenNoteName(ds.noteName)} ${ds.octave}`;
   const text = ds.inTune
     ? `${spoken}, in tune`
     : `${spoken}, ${Math.abs(Math.round(ds.cents))} cents ${ds.cents < 0 ? 'flat' : 'sharp'}`;

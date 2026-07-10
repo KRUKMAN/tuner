@@ -119,6 +119,26 @@ html, body {
   background: var(--bg-bot);
 }
 
+/* ---------- Focus visibility ---------- */
+/* No :focus/:focus-visible rule previously existed anywhere in this file — the UA
+   default ring rendered, but at low contrast on accent-filled buttons (.start-btn,
+   .seg-btn.is-on, .sheet-done, chip-row .chip.is-on). Uses the --accent token so it
+   stays visible across all three themes (dark / light / high-contrast — see the
+   contrast-ratio table on the [data-theme="contrast"] block above). */
+:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+/* .str.is-pinned already draws its own `outline` (see below) — a same-property
+   focus ring would just overwrite it, silently losing the focus cue on a pinned
+   string. box-shadow stacks instead, so "pinned" and "focused" stay visually
+   distinct even when both are true at once. */
+.str:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--bg-bot), 0 0 0 6px var(--accent);
+}
+
 body {
   font-family: 'Space Grotesk', system-ui, -apple-system, sans-serif;
   color: var(--ink);
@@ -720,6 +740,11 @@ body {
   background: transparent; color: var(--muted-2); cursor: pointer; }
 @media (prefers-reduced-motion: reduce) {
   .met-pill { transition: none; }
+  /* The transition rule above only stops the *animated* jump between states — the
+     active pill still applied an instant transform/box-shadow "pop" every beat.
+     Suppress those too, consistent with how the strobe and dial fully de-animate
+     elsewhere in this file; .is-accent's background-colour swap still marks the beat. */
+  .met-pill.is-active { transform: none; box-shadow: none; }
 }
 
 .sheet-done {

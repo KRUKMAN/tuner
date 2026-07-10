@@ -21,7 +21,7 @@
   <main class="app" id="app">
     <div id="liveRegion" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
     <!-- Header -->
-    <header class="hdr">
+    <header class="hdr" id="hdr">
       <div class="mode-nav" id="modeNav" role="group" aria-label="Mode">
         <button class="mode-btn is-on" id="navTuner" type="button" aria-pressed="true">Tuner</button>
         <button class="mode-btn" id="navMet" type="button" aria-pressed="false">Metronome</button>
@@ -77,18 +77,22 @@
         <div class="overlay-sub" id="overlaySub">Guitar &amp; bass · precise &amp; steady · on‑device</div>
         <button class="start-btn" id="startBtn" type="button">Tap to start listening</button>
         <div class="overlay-note">Needs your microphone to detect pitch. Audio is analyzed on this device and never leaves it.</div>
-        <div class="overlay-status" id="overlayStatus" hidden></div>
+        <div class="overlay-status" id="overlayStatus" role="alert" hidden></div>
         <button class="retry-btn" id="retryBtn" type="button" aria-label="Retry microphone access" hidden>Retry</button>
       </div>
     </div>
+    </div>
 
-    <!-- Tuning / settings sheet -->
+    <!-- Tuning / settings sheet — a top-level overlay, deliberately OUTSIDE #tunerView /
+         #metronomeView: openSheet()/closeSheet() (controls.js) mark those two view
+         wrappers (+ the header) inert/aria-hidden while the sheet is open, so the sheet
+         itself must not be their descendant or it would be hidden along with them. -->
     <div class="sheet-scrim" id="sheetScrim" hidden></div>
     <div class="sheet" id="sheet" hidden tabindex="-1" role="dialog" aria-modal="true" aria-label="Tuning settings">
       <div class="sheet-handle" aria-hidden="true"></div>
       <div id="sheetMain">
         <div class="sheet-row">
-          <div class="chip-row" id="instrumentSeg" role="tablist" aria-label="Instrument"><!-- instrument chips injected --></div>
+          <div class="chip-row" id="instrumentSeg" role="group" aria-label="Instrument"><!-- instrument chips injected --></div>
           <button class="theme-toggle" id="themeBtn" type="button" title="Cycle theme (dark / light / high-contrast)" aria-label="Theme: dark. Tap for light theme.">◑</button>
         </div>
         <div class="sheet-section-title">Tuning</div>
@@ -122,7 +126,6 @@
         <button class="sheet-done" id="sheetDone" type="button">Done</button>
       </div>
       <div id="sheetEditor" hidden><!-- custom tuning editor injected --></div>
-    </div>
     </div>
 
     <!-- Metronome view (mutually exclusive with the tuner; toggled by app.js) -->

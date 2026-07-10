@@ -36,25 +36,46 @@ export default function run() {
     assert(stateLabelFor(ds({ inTune: false, cents: 40 })) === 'SHARP ♯', '|cents|>15 sharp -> SHARP ♯');
   });
 
-  suite('announcementFor: throttled to note/in-tune changes, never per-frame', () => {
+  suite('stateLabelFor: ALMOST band boundary is inclusive at exactly +/-15 cents', () => {
+    assert(stateLabelFor(ds({ inTune: false, cents: -15 })) === 'ALMOST ♭', 'cents === -15 (boundary) -> ALMOST ♭, <=15 is inclusive');
+    assert(stateLabelFor(ds({ inTune: false, cents: 15 })) === 'ALMOST ♯', 'cents === 15 (boundary) -> ALMOST ♯, <=15 is inclusive');
+    assert(stateLabelFor(ds({ inTune: false, cents: -15.01 })) === 'FLAT ♭', 'cents just past -15 -> FLAT ♭ (outside the inclusive boundary)');
+    assert(stateLabelFor(ds({ inTune: false, cents: 15.01 })) === 'SHARP ♯', 'cents just past 15 -> SHARP ♯ (outside the inclusive boundary)');
+  });
+
+  suite('announcementFor: octave is included in the spoken text (E2 vs E4 must not sound alike)', () => {
+    const low = announcementFor(ds({ noteName: 'E', octave: 2, inTune: true, cents: 0 }), null);
+    assert(low && low.text === 'E 2, in tune', 'low E (E2) announces its octave');
+
+    const high = announcementFor(ds({ noteName: 'E', octave: 4, inTune: true, cents: 0 }), null);
+    assert(high && high.text === 'E 4, in tune', 'high E (E4) announces its octave');
+
+    assert(low.text !== high.text, 'E2 and E4 must announce different text (octave disambiguates a 6-string guitar\'s two E strings)');
+    assert(low.key !== high.key, 'E2 and E4 also produce different throttle keys');
+
+    const sharp = announcementFor(ds({ noteName: 'F#', octave: 4, inTune: false, cents: -8 }), null);
+    assert(sharp && sharp.text === 'F sharp 4, 8 cents flat', "sharp note pronounced 'F sharp'; octave follows it; flat cents phrased");
+  });
+
+  suite('announcementFor: throttled to note/band changes, never per-frame', () => {
     let key = null;
 
     const a1 = announcementFor(ds({ status: 'silent', noteName: null }), key);
     assert(a1 === null, 'silent on first call -> no announcement');
 
     const a2 = announcementFor(ds({ noteName: 'E', octave: 4, inTune: true, cents: 1 }), key);
-    assert(a2 && a2.text === 'E, in tune', 'first active in-tune reading announces');
+    assert(a2 && a2.text === 'E 4, in tune', 'first active in-tune reading announces');
     key = a2.key;
 
     const a3 = announcementFor(ds({ noteName: 'E', octave: 4, inTune: true, cents: 2 }), key);
-    assert(a3 === null, 'same note+state next frame -> no re-announcement (throttled)');
+    assert(a3 === null, 'same note+band next frame -> no re-announcement (throttled)');
 
     const a4 = announcementFor(ds({ noteName: 'F#', octave: 4, inTune: false, cents: -8 }), key);
-    assert(a4 && a4.text === 'F sharp, 8 cents flat', "sharp note pronounced 'F sharp'; flat cents phrased");
+    assert(a4 && a4.text === 'F sharp 4, 8 cents flat', "sharp note pronounced 'F sharp'; flat cents phrased");
     key = a4.key;
 
     const a5 = announcementFor(ds({ noteName: 'F#', octave: 4, inTune: true, cents: 0 }), key);
-    assert(a5 && a5.text === 'F sharp, in tune', 'in-tune transition on the SAME note re-announces');
+    assert(a5 && a5.text === 'F sharp 4, in tune', 'in-tune transition on the SAME note re-announces (band changed)');
     key = a5.key;
 
     const a6 = announcementFor(ds({ status: 'rejected', noteName: null }), key);
@@ -65,11 +86,32 @@ export default function run() {
     assert(a7 === null, 'staying blank -> no repeat "nothing" announcements');
 
     const a8 = announcementFor(ds({ noteName: 'F#', octave: 4, inTune: true, cents: 0 }), key);
-    assert(a8 && a8.text === 'F sharp, in tune', 'sound resuming re-announces even the same note (it stopped and restarted)');
+    assert(a8 && a8.text === 'F sharp 4, in tune', 'sound resuming re-announces even the same note (it stopped and restarted)');
+  });
+
+  suite('announcementFor: coarse cents band is folded into the throttle key (re-announces on a band crossing while tuning)', () => {
+    let key = null;
+
+    const b1 = announcementFor(ds({ noteName: 'A', octave: 2, inTune: false, cents: -40 }), key);
+    assert(b1 && b1.text === 'A 2, 40 cents flat', 'starting FLAT (|cents|>15) announces');
+    key = b1.key;
+
+    const b2 = announcementFor(ds({ noteName: 'A', octave: 2, inTune: false, cents: -35 }), key);
+    assert(b2 === null, 'moving within the FLAT band (still |cents|>15) -> no re-announcement');
+
+    const b3 = announcementFor(ds({ noteName: 'A', octave: 2, inTune: false, cents: -10 }), key);
+    assert(b3 && b3.text === 'A 2, 10 cents flat', 'crossing FLAT -> ALMOST re-announces even though the note itself never changed');
+    key = b3.key;
+
+    const b4 = announcementFor(ds({ noteName: 'A', octave: 2, inTune: false, cents: -6 }), key);
+    assert(b4 === null, 'moving within the ALMOST band (still |cents|<=15) -> no re-announcement');
+
+    const b5 = announcementFor(ds({ noteName: 'A', octave: 2, inTune: true, cents: 0 }), key);
+    assert(b5 && b5.text === 'A 2, in tune', 'crossing ALMOST -> in-tune re-announces (the snap-in cue)');
   });
 
   suite('announcementFor: cents rounded to whole numbers', () => {
     const a = announcementFor(ds({ noteName: 'A', octave: 2, inTune: false, cents: 23.6 }), null);
-    assert(a.text === 'A, 24 cents sharp', 'cents rounded to nearest whole number');
+    assert(a.text === 'A 2, 24 cents sharp', 'cents rounded to nearest whole number');
   });
 }

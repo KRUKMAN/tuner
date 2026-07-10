@@ -38,6 +38,9 @@ export class Controls {
     this.$ = (id) => doc.getElementById(id);
 
     this.app = this.$('app');
+    this.header = this.$('hdr');
+    this.tunerView = this.$('tunerView');
+    this.metronomeView = this.$('metronomeView');
     this.liveRegion = this.$('liveRegion');
     this.stateLabel = this.$('stateLabel');
     this.noteName = this.$('noteName');
@@ -74,6 +77,7 @@ export class Controls {
     this._lastNoteKey = null;
     this._announceKey = null;
     this._preOpenFocus = null;
+    this._sheetOpen = false;
 
     // custom editor working state
     this._editMidis = [];
@@ -148,8 +152,11 @@ export class Controls {
 
     const ann = announcementFor(ds, this._announceKey);
     if (ann) {
+      // Track the key even while the sheet is open (below) so closing it doesn't
+      // fire a stale burst-announcement for every note/band change that happened
+      // silently in the background — only the live region WRITE is suppressed.
       this._announceKey = ann.key;
-      if (ann.text) {
+      if (ann.text && !this._sheetOpen) {
         // Clear-then-set (forcing a reflow in between) so a screen reader
         // re-announces even when the new text is byte-identical to what's
         // already in the region (e.g. the same note resumes after a brief
@@ -227,7 +234,7 @@ export class Controls {
       btn.textContent = info.name[0];
       btn.title = `${info.name}${info.octave} · ${frequencyFromMidi(midi, a4).toFixed(2)} Hz — tap to pin`;
       btn.setAttribute('aria-pressed', 'false');
-      btn.setAttribute('aria-label', `${info.name}${info.octave}, tap to pin pitch detection to this string`);
+      btn.setAttribute('aria-label', this._stringAriaLabel(info, i === this._pinnedIndex));
       btn.addEventListener('click', () => {
         this.cb.onStringSelect(i);
       });
@@ -238,6 +245,13 @@ export class Controls {
     this._applyPinnedState();
     this._syncToneBtn();
     this._renderTuningList();
+  }
+
+  /** aria-label text for a string circle button — reflects current pin state
+   *  (Fix 5: a pinned string must say "tap to unpin", not the stale "tap to pin"). */
+  _stringAriaLabel(info, pinned) {
+    const action = pinned ? 'tap to unpin' : 'tap to pin pitch detection to this string';
+    return `${info.name}${info.octave}, ${action}`;
   }
 
   setActiveString(index) { this._setActive(index); }
@@ -275,6 +289,12 @@ export class Controls {
       const pinned = i === this._pinnedIndex;
       kids[i].classList.toggle('is-pinned', pinned);
       kids[i].setAttribute('aria-pressed', String(pinned));
+      // Keep the label truthful once pinned — "tap to pin" is wrong for a string
+      // that tapping would now UNpin (Fix 5: stale "pressed" label on a pinned string).
+      if (this._tuning && this._tuning.strings[i] != null) {
+        const info = midiToName(this._tuning.strings[i]);
+        kids[i].setAttribute('aria-label', this._stringAriaLabel(info, pinned));
+      }
     }
     this.autoLabel.textContent = this._pinnedIndex != null ? 'PINNED' : 'AUTO';
     if (this._pinnedIndex != null && this._tuning) {
@@ -370,8 +390,11 @@ export class Controls {
       b.className = 'chip' + (inst.id === this._instrument ? ' is-on' : '');
       b.dataset.instrument = inst.id;
       b.textContent = inst.label;
-      b.setAttribute('role', 'tab');
-      b.setAttribute('aria-selected', inst.id === this._instrument ? 'true' : 'false');
+      // role="group" + aria-pressed (index.html), not the tab/tablist pattern: there
+      // is no tabpanel relationship, arrow-key navigation, or roving tabindex here,
+      // so a real role="tab" would announce "tab, 1 of 7" while Left/Right did
+      // nothing — aria-pressed on a plain button honestly describes what this is.
+      b.setAttribute('aria-pressed', inst.id === this._instrument ? 'true' : 'false');
       b.addEventListener('click', () => {
         if (inst.id === this._instrument) return;
         this.cb.onModeChange(inst.id);
@@ -387,7 +410,7 @@ export class Controls {
     seg.querySelectorAll('.chip').forEach((b) => {
       const on = b.dataset.instrument === inst;
       b.classList.toggle('is-on', on);
-      b.setAttribute('aria-selected', on ? 'true' : 'false');
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
       if (on) active = b;
     });
     // Keep the active chip visible on a narrow phone: centre it within the scroll row.
@@ -468,17 +491,38 @@ export class Controls {
     this.sheet.hidden = false;
     this._showMain();
     this.doc.addEventListener('keydown', this._onSheetKeydown);
+    this._sheetOpen = true;
+    // Isolate the background from assistive tech: the Tab-trap (_onSheetKeydown)
+    // only catches a physical Tab key, not a screen reader's virtual cursor, and
+    // aria-modal="true" on the sheet alone is honoured inconsistently across ATs.
+    // inert (belt) + aria-hidden (suspenders) on the header + both view wrappers
+    // — everything the sheet itself is NOT a descendant of (see index.html) —
+    // keeps a virtual cursor from wandering into background content while a
+    // modal is open.
+    this._setBackgroundInert(true);
   }
 
   closeSheet() {
     this.scrim.hidden = true;
     this.sheet.hidden = true;
     this.doc.removeEventListener('keydown', this._onSheetKeydown);
+    this._sheetOpen = false;
+    this._setBackgroundInert(false);
     const trigger = this._preOpenFocus;
     this._preOpenFocus = null;
     if (trigger && this.doc.contains(trigger) && typeof trigger.focus === 'function') {
       trigger.focus();
     }
+  }
+
+  /** @param {boolean} hidden */
+  _setBackgroundInert(hidden) {
+    [this.header, this.tunerView, this.metronomeView].forEach((el) => {
+      if (!el) return;
+      el.inert = hidden;
+      if (hidden) el.setAttribute('aria-hidden', 'true');
+      else el.removeAttribute('aria-hidden');
+    });
   }
 
   _showMain() {

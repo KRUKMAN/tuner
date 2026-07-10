@@ -401,8 +401,11 @@ function handleAuto() {
 
 function changeInstrument(instrument) {
   state.instrument = instrument;
+  // selectTuning() already syncs the Controls instrument UI internally (the
+  // resolved default tuning's instrument always equals this one) — a second,
+  // explicit sync call here was redundant and drove _renderTuningList() a third
+  // time per switch.
   selectTuning(defaultTuningIdFor(instrument));
-  controls.setInstrument(instrument);
 }
 
 function changeTuning(tuningId) { selectTuning(tuningId); }
