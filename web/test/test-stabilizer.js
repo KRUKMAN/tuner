@@ -378,6 +378,34 @@ export default function run() {
     assert(ds.midi === 59, `B3 -45c still reads B3 (got ${ds.midi})`);
   });
 
+  suite('stabilizer(v2): a period-x4 subharmonic is corrected, not shown as another string', () => {
+    // REGRESSION (found on real recorded plucks). Deep in a pluck's decay (~-65 dBFS)
+    // MPM locks onto FOUR times the period: a ringing B3 (246.94 Hz) reads as 61.7 Hz.
+    // 61.7 Hz is nearest the E2 string (-524 cents), so without an f*4 candidate in the
+    // octave-sanity check the median is poisoned, the reference flips to E2, and the
+    // tuner confidently displays "E, -525 cents" (then +1857) while a B is ringing.
+    const B3 = 246.94;
+    const s = new Stabilizer({
+      config: CONFIG, a4: 440, tuning: [40, 45, 50, 55, 59, 64], lockedString: null,
+    });
+    let t = 0;
+    let ds;
+
+    for (let i = 0; i < 6; i++) { ds = s.update(hframe(B3, 0.95, -20, 0.9), t); t += DT; }
+    assert(ds.midi === 59, `established B3 midi 59 (got ${ds.midi})`);
+
+    // Six consecutive x4-subharmonic frames — plenty to flip the median and the
+    // note-name hysteresis if they are not corrected back up.
+    let worstCents = 0;
+    for (let i = 0; i < 6; i++) {
+      ds = s.update(hframe(B3 / 4, 0.95, -20, 0.9), t); t += DT;
+      if (ds.status === 'active') worstCents = Math.max(worstCents, Math.abs(ds.cents));
+    }
+    assert(ds.midi === 59, `x4 subharmonic corrected back to B3, NOT E2 (40) — got ${ds.midi}`);
+    assert(ds.stringIndex === 4, `still highlights the B string (index 4), got ${ds.stringIndex}`);
+    assert(worstCents < 60, `never displays an absurd cents value (worst |cents| was ${worstCents.toFixed(0)})`);
+  });
+
   suite('stabilizer(v2): guarded snap still rescues a genuine octave error', () => {
     // Bass 4-string. The detector reports A2 (110 Hz) — an octave-up error off the A1
     // string (55 Hz). 110 Hz sits ~200 cents from the nearest string (G2), well outside

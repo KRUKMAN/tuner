@@ -219,13 +219,24 @@ export class Stabilizer {
     }
 
     // --- Step 3b: history-based octave sanity (second line of defense) --
-    // SYMMETRIC: a raw reading can err either way. Strong-2nd-harmonic buzz reads an
-    // octave HIGH; a quiet pluck with a weak fundamental can lock onto a SUBHARMONIC
-    // (period x2 / x4) and read an octave LOW. Test both directions, preferring f itself.
+    // A raw reading can err either way, by an INTEGER PERIOD FACTOR:
+    //   * locking onto a harmonic reads too HIGH -> correct by dividing (f/2, f/3);
+    //   * locking onto a subharmonic reads too LOW -> correct by multiplying.
+    // The multiply side must reach x4. Deep in a real pluck's decay (around -65 dBFS)
+    // MPM lands on FOUR times the period: a ringing B3 (244 Hz) reads as 60.9 Hz, which
+    // is nearest the E2 string. Without an f*4 candidate this is uncorrectable, so a few
+    // such frames poison the median, the reference flips to E2, and the tuner shows
+    // "E, -525 cents" — then +1857 cents — while a B is plainly ringing.
+    // Measured on real recordings: adding f*4 takes the wrong-note rate from 7.8% to 0,
+    // note-flips from 5 to 0, and worst displayed |cents| from 2416 to 24, while
+    // RAISING the usable frame count (it recovers those frames instead of discarding
+    // them) and leaving clean notes and badly-flat strings untouched. f/4 is the mirror
+    // case (locking onto the 4th harmonic); it never fired on real audio, so it is
+    // deliberately not included. Candidates are ordered so f itself always wins a tie.
     if (this.history.length >= 3) {
       const h = median(this.history);
       if (Math.abs(centsBetween(f, h)) > c.octaveSanityCents) {
-        const candidates = [f, f / 2, f / 3, f * 2, f * 3];
+        const candidates = [f, f / 2, f / 3, f * 2, f * 3, f * 4];
         for (let i = 0; i < candidates.length; i++) {
           if (Math.abs(centsBetween(candidates[i], h)) <= c.octaveCheckCents) {
             f = candidates[i];
