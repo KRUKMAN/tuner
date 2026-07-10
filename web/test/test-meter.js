@@ -3,6 +3,7 @@ import { suite, assert, assertClose } from './assert.js';
 import {
   expandBar, makeAdditiveBar, cycleAccent, tapTempoBpm,
   groupsFromBar, regroupBar, ACCENT_CYCLE,
+  groupBoundaries, toggleGroupBoundaryAt, meterLabel,
 } from '../js/music/meter.js';
 import { CONFIG } from '../js/config.js';
 
@@ -120,5 +121,52 @@ export default function run() {
       'group-first beats accented');
     assert(re[1].accent === 'normal' && re[4].accent === 'normal', 'former single-group accent demoted to normal');
     assert(re[4].subdivision === 3, 'per-beat subdivision preserved across regroup');
+  });
+
+  suite('meter: groupBoundaries recovers cumulative group starts', () => {
+    assert(groupBoundaries(makeAdditiveBar([4])).join(',') === '', 'single group [4] → no boundaries');
+    assert(groupBoundaries(makeAdditiveBar([3, 2, 2])).join(',') === '3,5', '3+2+2 → boundaries at 3, 5');
+    assert(groupBoundaries(makeAdditiveBar([2, 2])).join(',') === '2', '2+2 → boundary at 2');
+    assert(groupBoundaries(makeAdditiveBar([1])).join(',') === '', 'single-beat bar → no boundaries');
+    assert(groupBoundaries([]).join(',') === '', 'empty bar → no boundaries');
+    assert(JSON.stringify(groupBoundaries(makeAdditiveBar([3, 2, 2]))) === JSON.stringify([3, 5]),
+      'groupBoundaries deep-equals [3,5] for 3+2+2');
+  });
+
+  suite('meter: toggleGroupBoundaryAt adds/removes a boundary via regroupBar', () => {
+    const bar4 = makeAdditiveBar([4]);
+    const split = toggleGroupBoundaryAt(bar4, 3);
+    assert(groupsFromBar(split).join(',') === '3,1', 'toggling boundary at 3 on [4] → groups 3,1');
+    assert(split[3].accent === 'accent', 'beat 3 becomes the new group downbeat');
+    assert(split !== bar4, 'a new bar array is returned');
+
+    const rejoined = toggleGroupBoundaryAt(split, 3);
+    assert(groupsFromBar(rejoined).join(',') === '4', 'toggling the same boundary again merges back to [4]');
+    assert(rejoined[3].accent === 'normal', 'beat 3 reverts to normal once merged');
+
+    // out-of-range indices: unchanged copy, not the same reference, original untouched
+    for (const badIndex of [0, bar4.length, -1, 1.5]) {
+      const copy = toggleGroupBoundaryAt(bar4, badIndex);
+      assert(copy !== bar4, `index ${badIndex}: returned array is a different reference`);
+      assert(groupsFromBar(copy).join(',') === '4', `index ${badIndex}: returned bar unchanged (still [4])`);
+      assert(groupsFromBar(bar4).join(',') === '4', `index ${badIndex}: original bar left untouched (non-mutation)`);
+    }
+
+    // subdivision and a pre-set 'ghost' accent survive a toggle (as long as the
+    // ghost beat doesn't itself land on the new group's downbeat, which regroupBar
+    // always accents — same rule tested above for regroupBar directly)
+    const custom = makeAdditiveBar([4]);
+    custom[1].subdivision = 3;
+    custom[2].accent = 'ghost';
+    const toggled = toggleGroupBoundaryAt(custom, 3);
+    assert(toggled[1].subdivision === 3, 'subdivision survives a toggle');
+    assert(toggled[2].accent === 'ghost', "'ghost' accent survives a toggle when not on the new boundary");
+  });
+
+  suite('meter: meterLabel is a cosmetic sizes string', () => {
+    assert(meterLabel(makeAdditiveBar([4])) === '4', 'single group [4] → "4"');
+    assert(meterLabel(makeAdditiveBar([3, 2, 2])) === '3+2+2', '3+2+2 → "3+2+2"');
+    assert(meterLabel(makeAdditiveBar([5])) === '5', 'single group [5] → "5"');
+    assert(meterLabel([]) === '', 'empty bar → ""');
   });
 }

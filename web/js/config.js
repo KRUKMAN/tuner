@@ -197,6 +197,25 @@ export const CONFIG = deepFreeze({
     tapResetMs: 2000,            // a gap longer than this starts a fresh tap set
     tapMaxTaps: 4,              // average at most the last N taps
 
+    // BPM control ergonomics (view). Press-and-hold the +/- steppers to auto-repeat:
+    // first repeat waits holdDelayMs, then every holdRepeatMs, accelerating to holdFastMs
+    // after holdAccelAfter repeats. Fixes the "120 -> 200 is 80 taps" gap.
+    holdDelayMs: 350,
+    holdRepeatMs: 90,
+    holdFastMs: 30,
+    holdAccelAfter: 8,
+    dragPxPerBpm: 3,            // drag the BPM band: this many px = one bpm step
+
+    // Beat-lane geometry (the hero). Block height encodes accent level.
+    laneHeightMax: 130,          // px, a full-size 'accent' block
+    accentHeightFrac: { accent: 1.0, normal: 0.62, ghost: 0.34, rest: 0.16 },
+
+    // Practice features
+    countInBarsDefault: 0,       // 0 = off; N accented bars before the pattern
+    accelBpmStep: 0,             // 0 = off; add this bpm every accelEveryBars bars
+    accelEveryBars: 4,
+    savedMetersMax: 8,           // cap on user-saved meters
+
     // look-ahead scheduler ("A Tale of Two Clocks"). scheduleAheadSec MUST exceed
     // lookaheadMs/1000 (guarded in test-config) so no click slips between pumps.
     lookaheadMs: 25,            // setTimeout pump period

@@ -130,21 +130,64 @@
 
     <!-- Metronome view (mutually exclusive with the tuner; toggled by app.js) -->
     <section class="met-view" id="metronomeView" hidden>
-      <div class="met-face">
-        <div class="met-bpm-row">
-          <button class="met-step" id="metBpmDown" type="button" aria-label="Slower">−</button>
-          <div class="met-bpm"><span id="metBpm">120</span><span class="met-bpm-unit">BPM</span></div>
-          <button class="met-step" id="metBpmUp" type="button" aria-label="Faster">+</button>
+      <div class="spacer"></div>
+
+      <div class="met-topline">
+        <button class="met-meter" id="metMeter" type="button" aria-label="Meter">4/4</button>
+        <span class="met-bars" id="metBars" aria-hidden="true"></span>
+      </div>
+
+      <div class="met-bpm-band" id="metBpmBand" role="group" aria-label="Tempo">
+        <div class="met-bpm">
+          <input class="met-bpm-input" id="metBpmInput" type="text" inputmode="numeric"
+                 value="120" aria-label="Beats per minute" />
+          <span class="met-bpm-unit">BPM</span>
         </div>
-        <div class="met-pills" id="metPills" aria-hidden="true"><!-- beat pills injected --></div>
-        <div class="met-actions">
-          <button class="met-tap" id="metTap" type="button" aria-label="Tap tempo">Tap</button>
-          <button class="met-start" id="metStart" type="button" aria-pressed="false">Start</button>
-          <button class="met-edit" id="metEditBtn" type="button" aria-expanded="false" aria-controls="metEditor">Edit meter</button>
+        <div class="met-bpm-track" aria-hidden="true"></div>
+      </div>
+      <div class="met-bpm-row">
+        <button class="met-step" id="metBpmDown" type="button" aria-label="Slower">−</button>
+        <button class="met-tap" id="metTap" type="button" aria-label="Tap tempo">Tap</button>
+        <button class="met-step" id="metBpmUp" type="button" aria-label="Faster">+</button>
+      </div>
+
+      <!-- The hero: a horizontal beat-lane. Blocks are the meter, the visualizer AND
+           the editor; a playhead sweeps across and loops. -->
+      <div class="met-lane-wrap">
+        <div class="met-lane" id="metLane" role="group" aria-label="Beats — tap a beat to change its accent">
+          <div class="met-playhead" id="metPlayhead" aria-hidden="true"></div>
+          <!-- beat blocks injected -->
         </div>
-        <div class="met-editor" id="metEditor" hidden><!-- editor injected --></div>
+        <div class="met-groups" id="metGroups" aria-hidden="true"><!-- group brackets injected --></div>
+      </div>
+
+      <div class="spacer"></div>
+
+      <div class="met-transport">
+        <button class="met-start" id="metStart" type="button" aria-pressed="false">
+          <span class="met-start-icon" aria-hidden="true"></span>
+          <span class="met-start-label">Start</span>
+        </button>
+        <button class="met-edit" id="metEditBtn" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="metSheet">Edit meter</button>
       </div>
     </section>
+
+    <!-- Metronome editor sheet — mirrors the tuner's .sheet with its own scrim + focus contract -->
+    <div class="sheet-scrim" id="metScrim" hidden></div>
+    <div class="sheet" id="metSheet" hidden tabindex="-1" role="dialog" aria-modal="true" aria-label="Edit meter">
+      <div class="sheet-handle" aria-hidden="true"></div>
+      <div class="sheet-section-title">Presets</div>
+      <div class="met-presets" id="metPresets"><!-- preset chips injected --></div>
+      <div class="sheet-section-title">Beats</div>
+      <div class="met-count" id="metCount"><!-- beat-count stepper injected --></div>
+      <div class="sheet-section-title">Per-beat accent &amp; subdivision</div>
+      <div class="met-editgrid" id="metEditGrid"><!-- per-beat controls injected --></div>
+      <div class="sheet-section-title">Practice</div>
+      <div class="met-practice" id="metPractice"><!-- count-in / accelerate injected --></div>
+      <div class="sheet-section-title">Saved meters</div>
+      <div class="met-saved" id="metSaved"><!-- saved meters injected --></div>
+      <button class="sheet-done" id="metSheetDone" type="button">Done</button>
+    </div>
   </main>
 
   <script>

@@ -716,52 +716,141 @@ body {
   border-radius: 999px; font-size: 13px; cursor: pointer; }
 .mode-btn.is-on { background: var(--accent); color: var(--bg-bot); }
 
-/* ---------- Package E: metronome view ---------- */
-.met-view { display: flex; flex-direction: column; align-items: center; gap: 22px; padding: 24px 16px; }
-.met-bpm-row { display: flex; align-items: center; gap: 20px; }
-.met-bpm { font-size: 64px; font-weight: 600; line-height: 1; display: flex; align-items: baseline; gap: 8px; }
-.met-bpm-unit { font-size: 16px; color: var(--muted-2); font-weight: 500; }
-.met-step { width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--muted-2);
-  background: transparent; color: inherit; font-size: 22px; cursor: pointer; }
+/* ---------- Package E: metronome — the beat-lane ---------- */
+/* Identity vs the tuner: the tuner owns the RADIAL dial; the metronome owns a
+   HORIZONTAL lane with a sweeping playhead. --met-play names the metronome's motion
+   colour (the tuner reserves --accent-in green for "in tune"). */
+:root { --met-play: var(--accent); }
+
+.met-view { align-items: stretch; padding: 8px 4px 0; gap: 14px; text-align: center; }
+.met-view .spacer { min-height: 8px; }
+
+.met-topline { display: flex; align-items: baseline; justify-content: center; gap: 12px; min-height: 22px; }
+.met-meter {
+  font: 600 15px 'JetBrains Mono', monospace; letter-spacing: 0.06em;
+  color: var(--muted); background: none; border: 0; padding: 2px 6px; cursor: default;
+}
+.met-bars { font: 500 12px 'JetBrains Mono', monospace; color: var(--muted-2); min-width: 56px; text-align: left; }
+
+/* BPM — the hero number. Tap to type; drag the band to scrub. */
+.met-bpm-band { position: relative; padding: 4px 0 10px; cursor: ew-resize; touch-action: pan-y; user-select: none; }
+.met-bpm { display: flex; align-items: baseline; justify-content: center; gap: 8px; }
+.met-bpm-input {
+  font: 600 clamp(64px, 20vw, 104px) 'JetBrains Mono', monospace; line-height: 1;
+  width: 3.2ch; text-align: center; color: var(--ink);
+  background: none; border: 0; padding: 0; caret-color: var(--met-play);
+}
+.met-bpm-input:focus { outline: none; }
+.met-bpm-band:focus-within .met-bpm-track { background: var(--met-play); opacity: 0.9; }
+.met-bpm-unit { font: 600 15px 'JetBrains Mono', monospace; color: var(--muted-2); }
+.met-bpm-track {
+  height: 3px; border-radius: 2px; margin: 6px auto 0; width: min(70%, 220px);
+  background: var(--surface-brd); opacity: 0.6;
+}
+
+.met-bpm-row { display: flex; align-items: center; justify-content: center; gap: 16px; }
+.met-step {
+  width: 48px; height: 48px; border-radius: 14px; border: 1px solid var(--surface-brd);
+  background: var(--surface); color: var(--ink); font-size: 24px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; touch-action: manipulation;
+}
 .met-step:active { transform: scale(0.94); }
+.met-tap {
+  min-width: 96px; height: 48px; border-radius: 14px; border: 1px solid var(--surface-brd);
+  background: var(--surface); color: var(--ink); font: 500 14px 'Space Grotesk', sans-serif; cursor: pointer;
+}
+.met-tap.is-flash { border-color: var(--met-play); color: var(--met-play); }
 
-.met-pills { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; max-width: 320px; }
-.met-pill { width: 20px; height: 20px; border-radius: 50%; background: var(--muted-2); position: relative;
-  transition: transform 60ms ease, background-color 60ms ease, box-shadow 60ms ease; }
-.met-pill.is-accent { background: var(--accent); }
-.met-pill.is-normal { background: var(--muted-2); }
-.met-pill.is-ghost  { background: var(--muted-2); opacity: 0.4; }
-.met-pill.is-rest   { background: transparent; border: 1px dashed var(--muted-2); }
-.met-pill[data-sub]::after { content: attr(data-sub); position: absolute; top: -14px; left: 50%;
-  transform: translateX(-50%); font-size: 10px; color: var(--muted-2); }
-.met-pill.is-active { transform: scale(1.4); box-shadow: 0 0 12px var(--accent-in); background: var(--accent-in); }
+/* The lane. Blocks fill the width; height encodes accent level; playhead sweeps. */
+.met-lane-wrap { position: relative; padding: 0 6px; }
+.met-lane {
+  position: relative; display: flex; align-items: flex-end; gap: 6px;
+  height: 130px; padding: 0; overflow: hidden;
+}
+.met-block {
+  position: relative; flex: 1 1 0; min-width: 0; border-radius: 8px 8px 3px 3px;
+  background: var(--ink); color: var(--bg-bot); border: 0; cursor: pointer; padding: 0;
+  transition: filter 90ms ease, opacity 90ms ease;
+  display: flex; align-items: flex-start; justify-content: center;
+}
+.met-block .met-block-num { font: 600 12px 'JetBrains Mono', monospace; padding-top: 6px; opacity: 0.7; }
+.met-block.is-accent { background: var(--ink); }
+.met-block.is-normal { background: var(--muted); }
+.met-block.is-ghost  { background: transparent; border: 1px solid var(--muted-2); }
+.met-block.is-ghost .met-block-num { color: var(--muted); }
+.met-block.is-rest   { background: transparent; border: 1px dashed var(--surface-brd); }
+.met-block.is-rest .met-block-num { color: var(--muted-2); }
+.met-block.is-downbeat { border-top: 3px solid var(--met-play); }
+/* subdivision ticks inside the block */
+.met-subticks { position: absolute; inset: 0; display: flex; pointer-events: none; }
+.met-subticks > i { flex: 1 1 0; border-left: 1px solid rgba(0,0,0,0.22); }
+.met-subticks > i:first-child { border-left: 0; }
+.met-block.is-ghost .met-subticks > i, .met-block.is-rest .met-subticks > i { border-color: var(--surface-brd); }
+/* group gap: a wider margin before a block that starts a new additive group */
+.met-block.is-group-start { margin-left: 20px; }
+.met-lane .met-block:first-child.is-group-start { margin-left: 0; }
 
-.met-actions { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
-.met-tap, .met-start, .met-edit { padding: 12px 22px; border-radius: 12px; border: 1px solid var(--muted-2);
-  background: transparent; color: inherit; font-size: 15px; cursor: pointer; }
-.met-start.is-on { background: var(--accent); border-color: var(--accent); color: var(--bg-bot); }
-.met-edit.is-on { border-color: var(--accent); }
+.met-playhead {
+  position: absolute; top: 0; bottom: 0; left: 0; width: 2px; margin-left: -1px;
+  background: var(--met-play); box-shadow: 0 0 10px var(--met-play);
+  transform: translateX(0); opacity: 0; pointer-events: none;
+}
+.met-lane.is-running .met-playhead { opacity: 1; }
+.met-block.is-hit { filter: brightness(1.7); }
 
-.met-editor { width: 100%; max-width: 340px; display: flex; flex-direction: column; gap: 14px; margin-top: 6px; }
+/* group brackets under the lane (the 3+2+2 story) */
+.met-groups { position: relative; height: 16px; margin-top: 4px; }
+.met-group-bracket {
+  position: absolute; top: 0; height: 6px; border: 1px solid var(--muted-2); border-bottom: 0;
+  border-radius: 4px 4px 0 0;
+}
+.met-group-label { position: absolute; top: 6px; transform: translateX(-50%); font: 500 10px 'JetBrains Mono', monospace; color: var(--muted-2); }
+
+/* transport */
+.met-transport { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 4px 0 2px; }
+.met-start {
+  min-width: 168px; height: 56px; border-radius: 16px; border: 0;
+  background: var(--met-play); color: var(--bg-bot); cursor: pointer;
+  font: 600 17px 'Space Grotesk', sans-serif; letter-spacing: 0.02em;
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  box-shadow: 0 0 24px rgba(76, 194, 242, 0.35);
+}
+.met-start:active { transform: scale(0.97); }
+.met-start-icon { width: 0; height: 0; border-style: solid;
+  border-width: 8px 0 8px 13px; border-color: transparent transparent transparent var(--bg-bot); }
+.met-start.is-on { background: var(--surface); color: var(--ink); box-shadow: none; border: 1px solid var(--surface-brd); }
+.met-start.is-on .met-start-icon { width: 12px; height: 12px; border: 0; border-radius: 2px; background: var(--ink); }
+.met-edit {
+  height: 56px; padding: 0 18px; border-radius: 16px; border: 1px solid var(--surface-brd);
+  background: none; color: var(--ink); font: 500 14px 'Space Grotesk', sans-serif; cursor: pointer;
+}
+
+/* editor sheet contents */
 .met-presets { display: flex; gap: 8px; flex-wrap: wrap; }
-.met-chip { padding: 8px 14px; border-radius: 999px; border: 1px solid var(--muted-2);
-  background: transparent; color: inherit; cursor: pointer; }
-.met-count { display: flex; align-items: center; gap: 14px; justify-content: center; }
-.met-count-label { min-width: 72px; text-align: center; color: var(--muted-2); }
-.met-editpills { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+.met-chip { padding: 9px 15px; border-radius: 999px; border: 1px solid var(--surface-brd);
+  background: var(--surface); color: var(--ink); font: 500 13px 'JetBrains Mono', monospace; cursor: pointer; }
+.met-chip.is-on { background: var(--accent); color: var(--bg-bot); border-color: transparent; }
+.met-count { display: flex; align-items: center; gap: 16px; justify-content: center; }
+.met-count-label { min-width: 78px; text-align: center; color: var(--ink); font: 500 15px 'JetBrains Mono', monospace; }
+.met-editgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(52px, 1fr)); gap: 10px; }
 .met-editcell { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-.met-editpill { width: 34px; height: 34px; border-radius: 8px; border: none; color: var(--bg-bot);
-  font-size: 13px; cursor: pointer; }
-.met-editpill.is-ghost, .met-editpill.is-rest { color: var(--muted-2); }
-.met-subbtn { font-size: 11px; padding: 2px 8px; border-radius: 6px; border: 1px solid var(--muted-2);
-  background: transparent; color: var(--muted-2); cursor: pointer; }
+.met-editblock { width: 100%; height: 44px; border-radius: 8px; border: 0; color: var(--bg-bot);
+  font: 600 13px 'JetBrains Mono', monospace; cursor: pointer; }
+.met-editblock.is-accent { background: var(--ink); }
+.met-editblock.is-normal { background: var(--muted); }
+.met-editblock.is-ghost, .met-editblock.is-rest { background: var(--surface); color: var(--muted); border: 1px solid var(--surface-brd); }
+.met-subbtn { font: 500 12px 'JetBrains Mono', monospace; padding: 3px 9px; border-radius: 7px;
+  border: 1px solid var(--surface-brd); background: none; color: var(--muted); cursor: pointer; }
+.met-practice { display: flex; flex-direction: column; gap: 12px; }
+.met-practice-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.met-saved { display: flex; flex-direction: column; gap: 8px; }
+.met-saved-empty { color: var(--muted-2); font: 500 13px 'JetBrains Mono', monospace; }
+
 @media (prefers-reduced-motion: reduce) {
-  .met-pill { transition: none; }
-  /* The transition rule above only stops the *animated* jump between states — the
-     active pill still applied an instant transform/box-shadow "pop" every beat.
-     Suppress those too, consistent with how the strobe and dial fully de-animate
-     elsewhere in this file; .is-accent's background-colour swap still marks the beat. */
-  .met-pill.is-active { transform: none; box-shadow: none; }
+  /* No sweeping playhead: hide it and rely on the discrete per-beat brighten,
+     which is driven from the sample-clock beat queue (pollBeat), not a timer. */
+  .met-lane.is-running .met-playhead { opacity: 0; }
+  .met-block { transition: none; }
 }
 
 .sheet-done {

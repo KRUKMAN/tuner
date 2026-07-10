@@ -193,6 +193,19 @@ controls.setChime(state.chime);
 controls.setTheme(root.getAttribute('data-theme') || 'dark');
 
 /* ---------- metronome view + mode nav ---------- */
+// Practice + saved-meter state (persisted via store.js).
+let metCountIn = 0;
+let metAccel = 0;
+let metSaved = [];
+let metCountingIn = false;
+let metCountInTarget = 0;
+let lastAccelBar = -1;
+(() => {
+  const ci = store.get('tuner-met-countin', 0); if (typeof ci === 'number') metCountIn = ci;
+  const ac = store.get('tuner-met-accel', 0); if (typeof ac === 'number') metAccel = ac;
+  const sv = store.get('tuner-met-saved', []); if (Array.isArray(sv)) metSaved = sv.filter((m) => m && Array.isArray(m.bar));
+})();
+
 const metView = new MetronomeView(document, {
   onStartStop: toggleMetronome,
   onBpmChange: (bpm) => {
@@ -203,12 +216,37 @@ const metView = new MetronomeView(document, {
   onTap: handleTap,
   onBarChange: (bar) => {
     state.metBar = bar;
-    if (metronome) metronome.setBar(bar);
+    // While running, only push edits to the scheduler when NOT counting in (the
+    // real bar is staged for after the count-in) — otherwise the edit would replace
+    // the count-in bar mid-count.
+    if (metronome && !metCountingIn) metronome.setBar(bar);
     persistMet();
+  },
+  onCountInChange: (bars) => { metCountIn = bars; store.set('tuner-met-countin', bars); },
+  onAccelChange: (step) => { metAccel = step; store.set('tuner-met-accel', step); },
+  onSaveMeter: () => {
+    metSaved.unshift({ label: meterLabel(state.metBar), bar: state.metBar.map((b) => ({ ...b })) });
+    metSaved = metSaved.slice(0, CONFIG.metronome.savedMetersMax);
+    store.set('tuner-met-saved', metSaved);
+    metView.setSavedMeters(metSaved);
+  },
+  onLoadSaved: (id) => {
+    const m = metSaved[id];
+    if (!m) return;
+    state.metBar = m.bar.map((b) => ({ ...b }));
+    if (metronome && !metCountingIn) metronome.setBar(state.metBar);
+    metView.setBar(state.metBar);
+    persistMet();
+  },
+  onDeleteSaved: (id) => {
+    metSaved.splice(id, 1);
+    store.set('tuner-met-saved', metSaved);
+    metView.setSavedMeters(metSaved);
   },
 });
 metView.setBpm(state.metBpm);
 metView.setBar(state.metBar);
+metView.setSavedMeters(metSaved);
 
 document.getElementById('navTuner').addEventListener('click', () => setUiMode('tuner'));
 document.getElementById('navMet').addEventListener('click', () => setUiMode('metronome'));
@@ -218,9 +256,20 @@ async function toggleMetronome() {
   if (metronome.isRunning) {
     metronome.stop();
     metView.setRunning(false);
+    metCountingIn = false;
   } else {
     metronome.setBpm(state.metBpm);
-    metronome.setBar(state.metBar);
+    lastAccelBar = -1;
+    if (metCountIn > 0) {
+      // Count-in: play N bars of a plain pulse of the real bar's length, then the
+      // scheduler swaps to the real bar (staged in metLoop when barCount reaches N).
+      metCountingIn = true;
+      metCountInTarget = metCountIn;
+      metronome.setBar(makeAdditiveBar([state.metBar.length]));
+    } else {
+      metCountingIn = false;
+      metronome.setBar(state.metBar);
+    }
     metronome.start();
     metView.setRunning(true);
   }
@@ -230,6 +279,7 @@ function handleTap() {
   const now = performance.now();
   if (tapTimes.length && now - tapTimes[tapTimes.length - 1] > CONFIG.metronome.tapResetMs) tapTimes = [];
   tapTimes.push(now);
+  metView.flashTap();
   const bpm = tapTempoBpm(tapTimes);
   if (bpm != null) {
     state.metBpm = bpm;
@@ -239,12 +289,42 @@ function handleTap() {
   }
 }
 
-/** Beat-highlight loop — polls the sample-clock schedule, not wall time. */
+/**
+ * Metronome visual loop. Reads the sample-clock transport (never wall time) to drive a
+ * continuous playhead + discrete beat brighten, applies auto-accelerate at bar
+ * boundaries, and swaps the real bar in once a count-in finishes. Also drains the
+ * beat queue so it can't grow across a session.
+ */
 function metLoop() {
   metRafId = requestAnimationFrame(metLoop);
   if (!audioCtx || !metronome || !metronome.isRunning) return;
-  const bi = metronome.pollBeat(audioCtx.currentTime);
-  if (bi >= 0) metView.highlightBeat(bi);
+  const now = audioCtx.currentTime;
+  metronome.pollBeat(now);                       // drain queue (result unused; phase drives the UI)
+  const tr = metronome.getTransport();
+  if (!tr.running || tr.barDurSec <= 0) return;
+
+  let phase = ((now - tr.barStartTime) / tr.barDurSec) % 1;
+  if (phase < 0) phase += 1;
+  const beat = tr.barLength ? Math.floor(phase * tr.barLength) : 0;
+  metView.setTransport(phase, beat, tr.barCount);
+
+  // Count-in → real bar swap (staged; applies at the next bar boundary).
+  if (metCountingIn && tr.barCount >= metCountInTarget) {
+    metCountingIn = false;
+    metronome.setBar(state.metBar);
+  }
+  // Auto-accelerate: once per qualifying bar boundary.
+  if (metAccel > 0 && !metCountingIn && tr.barCount > 0 &&
+      tr.barCount !== lastAccelBar && tr.barCount % CONFIG.metronome.accelEveryBars === 0) {
+    lastAccelBar = tr.barCount;
+    const next = Math.min(CONFIG.metronome.bpmMax, state.metBpm + metAccel);
+    if (next !== state.metBpm) {
+      state.metBpm = next;
+      metronome.setBpm(next);
+      metView.setBpm(next);
+      persistMet();
+    }
+  }
 }
 
 function setUiMode(mode) {
@@ -254,6 +334,9 @@ function setUiMode(mode) {
 
   document.getElementById('tunerView').hidden = toMet;
   document.getElementById('metronomeView').hidden = !toMet;
+  // The AUTO dot and A=440 chip are tuner-only — they mean nothing in metronome mode.
+  document.getElementById('autoBtn').hidden = toMet;
+  document.getElementById('a4Btn').hidden = toMet;
   const navTuner = document.getElementById('navTuner');
   const navMet = document.getElementById('navMet');
   navTuner.classList.toggle('is-on', !toMet);

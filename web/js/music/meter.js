@@ -132,3 +132,56 @@ export function regroupBar(bar, groups) {
   });
   return out;
 }
+
+/**
+ * Beat indices (1..bar.length-1) at which a new additive group begins: the
+ * cumulative sums of groupsFromBar(bar), excluding the leading 0 and final total.
+ * @param {Beat[]} bar
+ * @returns {number[]}
+ */
+export function groupBoundaries(bar) {
+  if (!Array.isArray(bar) || bar.length === 0) return [];
+  const sizes = groupsFromBar(bar);
+  const boundaries = [];
+  let sum = 0;
+  for (let i = 0; i < sizes.length - 1; i++) {
+    sum += sizes[i];
+    boundaries.push(sum);
+  }
+  return boundaries;
+}
+
+/**
+ * Add a group boundary at `index` if none exists there, or remove it if one does,
+ * then rebuild the bar via regroupBar with the resulting group sizes. Never mutates
+ * the input bar. `index` must be an integer in 1..bar.length-1; any other index
+ * returns a shallow copy of the bar unchanged.
+ * @param {Beat[]} bar
+ * @param {number} index
+ * @returns {Beat[]}
+ */
+export function toggleGroupBoundaryAt(bar, index) {
+  if (!Array.isArray(bar)) return [];
+  if (!Number.isInteger(index) || index < 1 || index > bar.length - 1) return bar.slice();
+  const boundaries = new Set(groupBoundaries(bar));
+  if (boundaries.has(index)) boundaries.delete(index); else boundaries.add(index);
+  const sorted = Array.from(boundaries).sort((a, b) => a - b);
+  const points = [0, ...sorted, bar.length];
+  const sizes = [];
+  for (let i = 1; i < points.length; i++) sizes.push(points[i] - points[i - 1]);
+  return regroupBar(bar, sizes);
+}
+
+/**
+ * Cosmetic meter label: additive sizes joined with '+' when there is more than one
+ * group (e.g. '3+2+2'), otherwise the plain beat count (e.g. '4'). Empty/invalid → ''.
+ * @param {Beat[]} bar
+ * @returns {string}
+ */
+export function meterLabel(bar) {
+  if (!Array.isArray(bar) || bar.length === 0) return '';
+  const sizes = groupsFromBar(bar);
+  if (sizes.length === 0) return '';
+  if (sizes.length > 1) return sizes.join('+');
+  return String(bar.length);
+}

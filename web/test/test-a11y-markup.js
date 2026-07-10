@@ -94,15 +94,24 @@ export default function run() {
       '1-8 string-count stepper is labelled');
   });
 
-  suite('a11y markup: metronome tap-tempo, beat pills, meter editor', () => {
+  suite('a11y markup: metronome tap-tempo, beat lane, meter editor', () => {
     assert(html.includes('id="metTap"') && html.includes('aria-label="Tap tempo"'),
       '#metTap has a static aria-label (not embedding the live BPM)');
-    assert(html.includes('id="metPills" aria-hidden="true"'),
-      'real-time beat-pill row is aria-hidden (redundant with the audible click)');
-    assert(html.includes('id="metEditBtn"') && html.includes('aria-controls="metEditor"'),
-      'meter editor toggle declares aria-controls (it is an inline disclosure, not a modal — see report)');
+    // The beat-lane blocks ARE the editor now (tap a block to change its accent), so
+    // they must be reachable, not aria-hidden. The lane group carries the instruction;
+    // the sweeping playhead is decorative and aria-hidden.
+    assert(html.includes('id="metPlayhead" aria-hidden="true"'),
+      'the decorative sweeping playhead is aria-hidden');
+    assert(html.includes('id="metLane"') && html.includes('role="group"') && /aria-label="Beats[^"]*"/.test(html),
+      'the beat lane is a labelled group (its blocks are interactive)');
+    // The editor is now a real modal sheet, so the toggle declares aria-haspopup="dialog"
+    // + aria-expanded and points at the sheet by id — not an inline-disclosure aria-controls.
+    assert(html.includes('id="metEditBtn"') && html.includes('aria-haspopup="dialog"') && html.includes('aria-controls="metSheet"'),
+      'meter editor toggle declares it opens a dialog (aria-haspopup) targeting the sheet');
+    assert(html.includes('id="metSheet"') && /id="metSheet"[^>]*role="dialog"[^>]*aria-modal="true"/.test(html),
+      'the meter editor sheet is a modal dialog');
     assert(metViewJs.includes("setAttribute('aria-expanded'"),
-      'metronome-view.js keeps aria-expanded in sync with the editor disclosure state');
+      'metronome-view.js keeps aria-expanded in sync with the sheet open state');
   });
 
   suite('a11y markup: sheet is a top-level overlay, isolated from the header/view background', () => {
@@ -131,9 +140,14 @@ export default function run() {
     assert(controlsJs.includes('tap to pin pitch detection to this string'), 'an unpinned string still announces "tap to pin"');
   });
 
-  suite('a11y markup: reduced motion also suppresses the metronome beat-flash transform', () => {
-    assert(cssText.includes('.met-pill.is-active { transform: none; box-shadow: none; }'),
-      'reduced-motion block sets .met-pill.is-active transform/box-shadow to none (not just the transition)');
+  suite('a11y markup: reduced motion suppresses the metronome sweep + block transition', () => {
+    // The redesigned lane has no beat-flash "pop"; the moving playhead is the motion.
+    // Reduced motion must hide the sweeping playhead (leaving the sample-clock-driven
+    // discrete brighten) and drop the block transitions.
+    assert(/@media \(prefers-reduced-motion: reduce\)[\s\S]*\.met-lane\.is-running \.met-playhead \{ opacity: 0;/.test(cssText),
+      'reduced-motion hides the sweeping playhead (discrete beat brighten remains)');
+    assert(/@media \(prefers-reduced-motion: reduce\)[\s\S]*\.met-block \{ transition: none;/.test(cssText),
+      'reduced-motion drops the block transition');
   });
 
   suite('a11y markup: an explicit :focus-visible ring exists using theme tokens', () => {
