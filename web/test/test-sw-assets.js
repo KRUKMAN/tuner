@@ -16,7 +16,10 @@ const WEB = join(dirname(fileURLToPath(import.meta.url)), '..'); // web/
 const EXCLUDE_DIRS = new Set(['test']);
 // package.json is tooling config, not a shipped runtime asset. sw.js registers
 // itself; it does not precache itself.
-const EXCLUDE_FILES = new Set(['sw.js', 'package.json']);
+// record.html is a standalone on-device mic diagnostic, not part of the offline app
+// shell — it must not be precached (it should always come from the network) and needs
+// no service worker.
+const EXCLUDE_FILES = new Set(['sw.js', 'package.json', 'record.html']);
 // Non-runtime file types that legitimately live under web/ but never ship.
 const EXCLUDE_EXT = new Set(['.md']);
 

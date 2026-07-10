@@ -888,3 +888,12 @@ body {
   .note-main, .note-state, .note-sub { transition: opacity 120ms linear; }
   .dial-indicator, .dial-progress { transition: fill 300ms ease, stroke 300ms ease; }
 }
+
+/* ---------- ?debug live signal readout ---------- */
+.dbg {
+  position: fixed; left: 8px; right: 8px; bottom: 8px; z-index: 999;
+  padding: 8px 10px; border-radius: 8px; pointer-events: none;
+  background: rgba(0,0,0,0.82); border: 1px solid var(--surface-brd);
+  font: 500 11px/1.5 'JetBrains Mono', ui-monospace, monospace; color: #cfe;
+  white-space: pre-wrap;
+}

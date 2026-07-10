@@ -98,7 +98,16 @@ export const CONFIG = deepFreeze({
   noiseFloorRiseClarityMax: 0.6, // floor may only rise on frames below this clarity
   gateOpenAboveFloorDb: 14,      // gate opens at floor + 14 dB
   gateHysteresisDb: 8,           // gate closes at (open - 8) dB
-  gateOpenDbMin: -60,            // clamp on computed open threshold (quiet rooms)
+  gateOpenDbMin: -78,            // floor under the adaptive open threshold. Was -60, which
+                                 // silently RAISED the SNR-based threshold (floor+14) up to
+                                 // -60 whenever the room was quiet -- fine on a hot desktop
+                                 // mic (-30 dBFS) but it blocked a phone's built-in mic: iOS
+                                 // delivers a guitar around -63 dBFS over a -88 dBFS floor
+                                 // (25 dB SNR, clarity 0.85), yet the note sat below -60 and
+                                 // the gate never opened. -78 lets floor+14 govern down to a
+                                 // ~-92 floor. Safe because floor+14 already keeps noise out:
+                                 // verified 0 false-lock frames on real cafe / cathedral /
+                                 // AC-hum / subway recordings at every value tested to -84.
   gateOpenDbMax: -35,            //   "        "        "         (loud rooms)
 
   // --- v2: smarter clarity / onset -------------------------------------

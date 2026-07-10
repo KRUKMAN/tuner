@@ -28,6 +28,22 @@ function makeStab() {
 }
 
 export default function run() {
+  suite('stabilizer: a quiet-but-clean note (phone mic) opens the gate', () => {
+    // REGRESSION (iPhone). A built-in phone mic delivers a guitar around -63 dBFS over a
+    // -88 dBFS noise floor — 25 dB SNR, clarity 0.85 — but the old gateOpenDbMin (-60)
+    // clamped the adaptive open threshold UP to -60, above the signal, so the gate never
+    // opened and the note never displayed. floor+14 (=-74 here) must govern instead.
+    const s = new Stabilizer({ config: CONFIG, a4: 440, tuning: [40, 45, 50, 55, 59, 64] });
+    let t = 0;
+    let ds;
+    // Establish the low noise floor (instant attack-down on quiet frames).
+    for (let i = 0; i < 8; i++) { ds = s.update(dropout(-88), t); t += DT; }
+    // Then a clean, quiet A2 (110 Hz) at -63 dBFS.
+    for (let i = 0; i < 10; i++) { ds = s.update(hframe(110, 0.9, -63, 0.92), t); t += DT; }
+    assert(ds.status === 'active', `quiet clean note at -63 dBFS over a -88 floor activates (got '${ds.status}')`);
+    assert(ds.midi === 45, `and reads the right note, A2 midi 45 (got ${ds.midi})`);
+  });
+
   suite('stabilizer: silence gate', () => {
     const s = makeStab();
     let t = 0;
