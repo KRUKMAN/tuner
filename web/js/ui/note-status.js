@@ -33,6 +33,23 @@ export function spokenNoteName(noteName) {
  * @param {DisplayState} ds
  * @returns {string} '' when there's nothing to show (blank/silent/rejected).
  */
+/**
+ * PURE. Round `value` to an integer for display, but keep the previously-shown integer
+ * until the value has moved decisively past the midpoint. Without this, a slowly drifting
+ * quantity (a decaying string's pitch really does drift) makes the last digit flicker on
+ * every animation frame while the needle itself is visually still.
+ * @param {number} value
+ * @param {number|null} prevShown  the integer currently on screen, or null if none
+ * @param {number} deadband        extra distance past the .5 midpoint before switching
+ * @returns {number} the integer to display
+ */
+export function steadyRound(value, prevShown, deadband) {
+  const next = Math.round(value);
+  if (prevShown == null) return next;
+  if (next === prevShown) return prevShown;
+  return Math.abs(value - prevShown) > 0.5 + deadband ? next : prevShown;
+}
+
 export function stateLabelFor(ds) {
   const active = ds.status === 'active' || ds.status === 'hold';
   if (!active || ds.noteName == null) return '';

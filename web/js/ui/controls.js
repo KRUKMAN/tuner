@@ -5,7 +5,8 @@
 import { midiToName, frequencyFromMidi } from '../music/theory.js';
 import { tuningsFor } from '../music/tunings.js';
 import { INSTRUMENTS } from '../music/instruments.js';
-import { stateLabelFor, announcementFor } from './note-status.js';
+import { stateLabelFor, announcementFor, steadyRound } from './note-status.js';
+import { CONFIG } from '../config.js';
 import { nextFocusIndex } from './focus-order.js';
 import { nextTheme, THEME_LABEL } from '../theme-cycle.js';
 
@@ -75,6 +76,8 @@ export class Controls {
     this._micRunning = false;
     this._blankTimer = null;
     this._lastNoteKey = null;
+    /** @private integer cents currently on screen; null = nothing shown yet */
+    this._shownCents = null;
     this._announceKey = null;
     this._preOpenFocus = null;
     this._sheetOpen = false;
@@ -186,6 +189,7 @@ export class Controls {
           this.stateLabel.textContent = '';
           this._blankTimer = null;
           this._lastNoteKey = null;
+          this._shownCents = null;   // next note starts fresh, not from a stale digit
         }, 1500);
       }
       this._setActive(null);
@@ -203,7 +207,11 @@ export class Controls {
 
     this.stateLabel.textContent = stateLabelFor(ds);
 
-    const cents = Math.round(ds.cents);
+    // Hysteresis on the INTEGER only. The needle is already smooth (~0.2 deg/frame);
+    // it was this digit, re-rounded every frame against a genuinely drifting pitch,
+    // that flickered ~5x/sec and read as "jittery when you try to be precise".
+    this._shownCents = steadyRound(ds.cents, this._shownCents, CONFIG.centsReadoutDeadband);
+    const cents = this._shownCents;
     const sign = cents < 0 ? '−' : cents > 0 ? '+' : '';
     const hz = ds.frequency != null ? ds.frequency.toFixed(1) : '–';
     this.noteSub.textContent = `${hz} Hz  ·  ${sign}${Math.abs(cents)} cents`;

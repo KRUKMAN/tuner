@@ -64,6 +64,13 @@ export const CONFIG = deepFreeze({
   noteDeadBandCents: 60,
   holdMs: 400,
   inTuneCents: 5,
+  centsReadoutDeadband: 0.4,     // hysteresis on the INTEGER cents readout only (not the
+                                 // needle, which is already smooth: ~0.2 deg/frame). A
+                                 // decaying string's pitch genuinely drifts, so rounding
+                                 // every frame made the last digit churn ~5x/sec while the
+                                 // dial sat still — read as "jittery when you try to be
+                                 // precise". The new integer must clear the midpoint by
+                                 // this much before it is accepted.
   octaveCheckCents: 40,
   a4Default: 440,
   a4Min: 430,
