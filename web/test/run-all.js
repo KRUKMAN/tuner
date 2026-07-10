@@ -8,6 +8,7 @@ import runStabilizer from './test-stabilizer.js';
 import runPitch from './test-pitch.js';
 import runIntegration from './test-integration.js';
 import runTrail from './test-trail.js';
+import runLayoutCss from './test-layout-css.js';
 import runStore from './test-store.js';
 import runSwAssets from './test-sw-assets.js';
 import runInstruments from './test-instruments.js';
@@ -37,6 +38,8 @@ runNoteStatus();
 runFocusOrder();
 runA11yMarkup();
 runThemeCycle();
+
+runLayoutCss();
 
 const ok = report();
 process.exit(ok ? 0 : 1);
