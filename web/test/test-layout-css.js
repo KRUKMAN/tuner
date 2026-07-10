@@ -47,4 +47,25 @@ export default function run() {
     assert(/#tunerView\s*,\s*\.met-view|\.met-view\s*,\s*#tunerView/.test(CSS),
       '.met-view shares the wrapper rule (same collapse bug otherwise)');
   });
+
+  // Regression: the mic ".overlay" is `position:absolute; inset:0`, so it sizes to its
+  // nearest POSITIONED ancestor. If that ancestor is `.app`, the overlay blankets the
+  // header too and (z-index:20 over the header's z-index:3) eats every tap on the
+  // Tuner|Metronome mode nav — you cannot switch to the metronome. #tunerView must be
+  // positioned so the overlay is confined to the tuner content, below the header.
+  suite('layout: the mic overlay is confined to #tunerView, not the whole app', () => {
+    const overlay = ruleFor('.overlay');
+    assert(overlay !== null && /position:\s*absolute/.test(overlay),
+      '.overlay is position:absolute (so its box comes from the nearest positioned ancestor)');
+    assert(overlay !== null && /inset:\s*0/.test(overlay),
+      '.overlay uses inset:0 (fills its containing block)');
+
+    // #tunerView must establish itself as that containing block. Guard EVERY #tunerView
+    // rule, since the shared flex block does not carry `position` — a later dedicated
+    // rule does.
+    const tunerViewRules = [...CSS.matchAll(/#tunerView(?![\w-])[^{}]*\{([^}]*)\}/g)].map((m) => m[1]);
+    assert(tunerViewRules.length > 0, '#tunerView has at least one rule');
+    assert(tunerViewRules.some((r) => /position:\s*relative/.test(r)),
+      '#tunerView is position:relative so the overlay cannot cover the header mode nav');
+  });
 }

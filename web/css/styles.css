@@ -179,6 +179,15 @@ body {
   flex-direction: column;
 }
 
+/* The mic "Tap to start listening" .overlay is `position:absolute; inset:0`, so it
+   sizes to its nearest positioned ancestor. Without this, that ancestor was `.app` —
+   the overlay blanketed the whole app INCLUDING the header, and (at z-index:20 over the
+   header's z-index:3) it swallowed every tap on the Tuner|Metronome mode nav: you
+   physically could not switch to the metronome. Making #tunerView the containing block
+   confines the overlay to the tuner content region (below the header), which is all it
+   ever needed to gate — the metronome doesn't use the mic at all. */
+#tunerView { position: relative; }
+
 .spacer { flex: 1 1 0; min-height: 12px; }
 .gap { height: 30px; }
 
