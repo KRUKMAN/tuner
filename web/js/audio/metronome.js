@@ -36,7 +36,31 @@ export class Metronome {
     // progress. A <= 0 value (empty/invalid bar) is treated as "not running" by
     // _pumpOnce rather than spinning a no-op setTimeout forever — see there.
     /** @private */ this._barDurSec = 0;
+    /** @private Absolute bar counter since start() (scheduling-time; leads audio by
+     *  < scheduleAheadSec). Drives the measure counter and auto-accelerate. */
+    this._barCount = 0;
     /** @private @type {{time:number, beatIndex:number}[]} */ this._beatQueue = [];
+  }
+
+  /**
+   * Read-only transport snapshot for the UI. Everything here is sample-clock
+   * bookkeeping the scheduler already maintains — reading it drives no audio and
+   * changes no timing. The continuous playhead interpolates its position from
+   * `barStartTime`/`barDurSec`: because bars are periodic, `((now - barStartTime) /
+   * barDurSec) mod 1` gives the correct phase even though `barStartTime` runs up to
+   * `scheduleAheadSec` ahead of the audible bar. Never drive animation from a timer —
+   * read `ctx.currentTime` per rAF and feed it here.
+   * @returns {{running:boolean, barStartTime:number, barDurSec:number, beatDur:number, barLength:number, barCount:number}}
+   */
+  getTransport() {
+    return {
+      running: this._running,
+      barStartTime: this._barStartTime,
+      barDurSec: this._barDurSec,
+      beatDur: this._beatDur,
+      barLength: this._bar ? this._bar.length : 0,
+      barCount: this._barCount,
+    };
   }
 
   /** @param {number} bpm @returns {number} clamped, rounded bpm */
@@ -79,6 +103,7 @@ export class Metronome {
     this._loadBar();                                   // expand current bar at current bpm
     this._evIdx = 0;
     this._beatQueue = [];
+    this._barCount = 0;
     this._barStartTime = ctx.currentTime + this._cfg.scheduleAheadSec; // brief lead-in
     this._running = true;
     this._pump();
@@ -152,6 +177,7 @@ export class Metronome {
         const barEnd = this._barStartTime + this._barDurSec;
         if (barEnd >= horizon) break;
         this._barStartTime = barEnd;
+        this._barCount++;
         this._evIdx = 0;
         this._loadBar();
       }

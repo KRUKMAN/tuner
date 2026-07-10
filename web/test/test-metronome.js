@@ -148,6 +148,50 @@ export default function run() {
     assertClose(starts[8].when - starts[0].when, 2 * barDur, 1e-9, 'bar 2 start vs bar 0 start has zero accumulated drift');
   });
 
+  suite('metronome: transport snapshot drives a correct continuous playhead', () => {
+    const { ctx, time } = makeFakeAudioContext();
+    const m = new Metronome({ audioContext: ctx });
+    const bpm = 120, beatDur = 60 / bpm, barDur = FOUR_FOUR.length * beatDur; // 2.0s
+    m.setBpm(bpm);
+    m.setBar(FOUR_FOUR);
+
+    // Stopped: transport reports not-running with the current bar's shape.
+    let tr = m.getTransport();
+    assert(tr.running === false, 'stopped → running false');
+    assert(tr.barLength === 4, 'barLength reflects the current bar');
+
+    startDeterministic(m);
+    tr = m.getTransport();
+    assert(tr.running === true && tr.barCount === 0, 'started → running, barCount 0');
+    assertClose(tr.barDurSec, barDur, 1e-9, 'barDurSec = barLength * 60/bpm');
+    assertClose(tr.beatDur, beatDur, 1e-9, 'beatDur = 60/bpm');
+
+    // The playhead phase the UI would compute, at a few clock positions. barStartTime
+    // runs ahead by the lead-in, but the modulo makes the phase correct regardless.
+    const phaseAt = (now) => {
+      const t = m.getTransport();
+      let p = ((now - t.barStartTime) / t.barDurSec) % 1;
+      return p < 0 ? p + 1 : p;
+    };
+    const leadIn = CONFIG.metronome.scheduleAheadSec;
+    assertClose(phaseAt(leadIn), 0, 1e-9, 'phase 0 at the first bar start');
+    assertClose(phaseAt(leadIn + beatDur), 0.25, 1e-9, 'phase 0.25 one beat into a 4/4 bar');
+    assertClose(phaseAt(leadIn + 2 * beatDur), 0.5, 1e-9, 'phase 0.5 at the half bar');
+    assertClose(phaseAt(leadIn + 3.5 * beatDur), 0.875, 1e-9, 'phase wraps correctly late in the bar');
+    // And a full bar later the phase is identical (periodic), even though the audible
+    // bar has advanced — this is why the modulo trick is valid.
+    assertClose(phaseAt(leadIn + barDur + beatDur), 0.25, 1e-9, 'phase is periodic across bars');
+
+    // Drive the pump across two bar boundaries; barCount must increment.
+    const stepSec = CONFIG.metronome.lookaheadMs / 1000;
+    const runUntil = leadIn + 2 * barDur + 0.5 * beatDur;
+    while (time.now < runUntil) { time.now += stepSec; m._pumpOnce(); }
+    assert(m.getTransport().barCount >= 2, `barCount advances with bars (got ${m.getTransport().barCount})`);
+
+    m.stop();
+    assert(m.getTransport().running === false, 'stop → running false');
+  });
+
   suite('metronome: fake-clock scheduler — past-due guard on a stall (Fix 1)', () => {
     const { ctx, time, starts } = makeFakeAudioContext();
     const m = new Metronome({ audioContext: ctx });
