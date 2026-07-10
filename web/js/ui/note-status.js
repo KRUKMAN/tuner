@@ -22,18 +22,6 @@ export function spokenNoteName(noteName) {
 }
 
 /**
- * Short visual state label shown under the note ("✓ IN TUNE" / "FLAT ♭" / ...).
- * The leading "✓" is a non-colour (shape) redundant cue for the in-tune state —
- * see spec §8 "Redundant (non-colour) in-tune cue" — the accent-colour swap
- * elsewhere (dial ring, string circle) stays, this text is an additional signal.
- *
- * This is also reused verbatim by announcementFor() below as the "coarse band"
- * component of its throttle key: in-tune / ALMOST-flat / ALMOST-sharp / FLAT /
- * SHARP is exactly the granularity worth a fresh spoken cue while turning a peg.
- * @param {DisplayState} ds
- * @returns {string} '' when there's nothing to show (blank/silent/rejected).
- */
-/**
  * PURE. Round `value` to an integer for display, but keep the previously-shown integer
  * until the value has moved decisively past the midpoint. Without this, a slowly drifting
  * quantity (a decaying string's pitch really does drift) makes the last digit flicker on
@@ -50,6 +38,18 @@ export function steadyRound(value, prevShown, deadband) {
   return Math.abs(value - prevShown) > 0.5 + deadband ? next : prevShown;
 }
 
+/**
+ * Short visual state label shown under the note ("✓ IN TUNE" / "FLAT ♭" / ...).
+ * The leading "✓" is a non-colour (shape) redundant cue for the in-tune state —
+ * see spec §8 "Redundant (non-colour) in-tune cue" — the accent-colour swap
+ * elsewhere (dial ring, string circle) stays, this text is an additional signal.
+ *
+ * This is also reused verbatim by announcementFor() below as the "coarse band"
+ * component of its throttle key: in-tune / ALMOST-flat / ALMOST-sharp / FLAT /
+ * SHARP is exactly the granularity worth a fresh spoken cue while turning a peg.
+ * @param {DisplayState} ds
+ * @returns {string} '' when there's nothing to show (blank/silent/rejected).
+ */
 export function stateLabelFor(ds) {
   const active = ds.status === 'active' || ds.status === 'hold';
   if (!active || ds.noteName == null) return '';

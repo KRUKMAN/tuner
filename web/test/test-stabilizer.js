@@ -48,17 +48,20 @@ export default function run() {
       s.update(frame(110, 0.97, -20), t);
       t += DT;
     }
-    // Now feed loud, low-clarity frames for well over holdMs (400 ms ≈ 24 ticks).
+    // Now feed loud, low-clarity frames for well beyond holdMs. Derived from CONFIG, not
+    // hardcoded: these suites assert the BEHAVIOUR (hold expires, then blanks), not the
+    // particular value of holdMs, which is tuned against real recordings.
+    const overHold = Math.ceil((CONFIG.holdMs + 200) / DT);
     let sawActive = false;
     let lastStatus = null;
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < overHold; i++) {
       const ds = s.update(frame(110, 0.5, -20), t);
       if (ds.status === 'active') sawActive = true;
       lastStatus = ds.status;
       t += DT;
     }
     assert(!sawActive, "low-clarity (0.5) frames are never 'active'");
-    assert(lastStatus === 'rejected', `after > 400 ms of unclear frames → blank ('rejected'), got '${lastStatus}'`);
+    assert(lastStatus === 'rejected', `after > holdMs of unclear frames → blank ('rejected'), got '${lastStatus}'`);
   });
 
   suite('stabilizer: steady 110 Hz locks to A2', () => {
@@ -141,15 +144,16 @@ export default function run() {
     // Stop feeding good frames — gate still open (loud) but no pitch → hold, then reject.
     let sawHoldEarly = false;
     let sawRejectLate = false;
-    for (let i = 0; i < 40; i++) {
+    const H = CONFIG.holdMs;                                   // derived, not hardcoded
+    for (let i = 0; i < Math.ceil((H + 200) / DT); i++) {
       const ds = s.update(dropout(-20), t);
       const elapsed = t - tLastGood;
-      if (elapsed < 380 && ds.status === 'hold') sawHoldEarly = true;
-      if (elapsed > 420 && ds.status === 'rejected') sawRejectLate = true;
+      if (elapsed < H - 20 && ds.status === 'hold') sawHoldEarly = true;
+      if (elapsed > H + 20 && ds.status === 'rejected') sawRejectLate = true;
       t += DT;
     }
-    assert(sawHoldEarly, "within 400 ms of last good reading → status 'hold'");
-    assert(sawRejectLate, "after 400 ms → blank ('rejected')");
+    assert(sawHoldEarly, "within holdMs of last good reading → status 'hold'");
+    assert(sawRejectLate, "after holdMs → blank ('rejected')");
   });
 
   // ==================================================================
@@ -287,7 +291,7 @@ export default function run() {
     let prevConf = Infinity;
     let finalStatus = null;
     let finalConf = null;
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < Math.ceil((CONFIG.holdMs + 200) / DT); i++) {
       ds = s.update(dropout(-20), t); // gate open, no pitch → hold then blank
       if (ds.status === 'hold') {
         sawHold = true;
@@ -495,8 +499,9 @@ export default function run() {
     assert(ds.status === 'active' && ds.midi === 45, 'first note establishes A2');
 
     // Let the note die: quiet frames past gateReleaseMs + holdMs close the gate and
-    // clear the median history (but NOT lastGood).
-    for (let i = 0; i < 45; i++) { ds = s.update(dropout(-80), t); t += DT; }
+    // clear the median history (but NOT lastGood). Frame count derived from CONFIG.
+    const quiet = Math.ceil((CONFIG.gateReleaseMs + CONFIG.holdMs + 200) / DT);
+    for (let i = 0; i < quiet; i++) { ds = s.update(dropout(-80), t); t += DT; }
     assert(ds.status === 'silent', `gate closed after silence (got '${ds.status}')`);
 
     // A new note begins with a transient. It must NOT be displayed.

@@ -57,12 +57,25 @@ export const CONFIG = deepFreeze({
   gateCloseDb: -55,
   gateReleaseMs: 400,
   medianWindow: 5,
-  oneEuroFcMin: 1.0,
+  oneEuroFcMin: 0.3,            // smoothing at REST. Lowered from 1.0: on a real held note this
+                                 // halves needle motion (0.38 -> 0.19 deg/frame mean, 4.35 -> 2.12
+                                 // max) for ~0.6 cents of extra lag while a peg is actually turning,
+                                 // which is nothing against the tens of cents you move it. beta keeps
+                                 // it responsive when the pitch IS moving -- that is the whole point
+                                 // of the one-euro filter. A display-side ease inside the in-tune band
+                                 // was tried first and REJECTED: any curve continuous at the band edge
+                                 // must have slope > 1 somewhere, so it amplified jitter exactly where
+                                 // the needle sits (max/frame got worse, 4.35 -> 5.67 deg).
   oneEuroBeta: 0.007,
   oneEuroDCutoff: 1.0,
   noteSwitchFrames: 3,
   noteDeadBandCents: 60,
-  holdMs: 400,
+  holdMs: 800,                   // hold the last good reading through a dropout. Raised from
+                                 // 400: on real recordings this alone lifts on-screen tracking
+                                 // several points with zero wrong-note or wild frames, and it is
+                                 // what stops the readout blinking out mid-decay. Not raised
+                                 // further (1200 tracks better still) because a stale note would
+                                 // linger over a second after you stop playing.
   inTuneCents: 5,
   centsReadoutDeadband: 0.4,     // hysteresis on the INTEGER cents readout only (not the
                                  // needle, which is already smooth: ~0.2 deg/frame). A
@@ -89,7 +102,12 @@ export const CONFIG = deepFreeze({
   gateOpenDbMax: -35,            //   "        "        "         (loud rooms)
 
   // --- v2: smarter clarity / onset -------------------------------------
-  claritySustain: 0.68,          // relaxed threshold once a note is locked (decaying bass strings)
+  claritySustain: 0.55,          // relaxed threshold once a note is LOCKED (decaying strings).
+                                 // Acquisition still needs clarityThreshold (0.80), so relaxing
+                                 // this cannot make noise false-lock -- verified against real
+                                 // cafe/cathedral/AC recordings: 0 active frames at any value.
+                                 // What it buys is tracking a note further into its decay, which
+                                 // is what makes a phone tuner feel like it "holds on" longer.
   sustainLockMs: 250,            // ref must be stable this long before relaxing
   attackConfirmFrames: 3,        // median samples required before ANY display. Must be >= 3:
                                  // median() of 1-2 samples cannot reject an outlier (of 2 it
