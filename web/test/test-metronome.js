@@ -192,6 +192,39 @@ export default function run() {
     assert(m.getTransport().running === false, 'stop → running false');
   });
 
+  suite('metronome: count-in swaps to the real meter after exactly N bars', () => {
+    // REGRESSION. app.js stages the real bar when barCount >= countIn - 1, because setBar
+    // while running applies at the NEXT boundary. Observing barCount === countIn (the old
+    // code) played an extra count-in bar. This drives the real scheduler exactly as
+    // app.js#metLoop would and asserts the count of count-in bars.
+    // Count-in bar = one 'accent' beat (freq 2000). Real bar = 4/4 (beat 1 is 'normal',
+    // freq 1000). The first 1000-Hz click marks entry into the real bar, so the number of
+    // 2000-Hz clicks before it = N count-in accents + the real bar's own downbeat.
+    for (const N of [1, 2, 3]) {
+      const { ctx, time, starts } = makeFakeAudioContext();
+      const m = new Metronome({ audioContext: ctx });
+      m.setBpm(120);
+      m.setBar([{ accent: 'accent', subdivision: 1 }]);   // count-in pulse
+      startDeterministic(m);
+
+      let counting = true;
+      const step = CONFIG.metronome.lookaheadMs / 1000;
+      let iters = 0;
+      // Drive until the first real ('normal') click appears, mirroring app.js#metLoop.
+      while (!starts.some((s) => s.freq === 1000) && iters++ < 5000) {
+        time.now += step;
+        m._pumpOnce();
+        const tr = m.getTransport();
+        if (counting && tr.barCount >= N - 1) { counting = false; m.setBar(FOUR_FOUR); }
+      }
+      const firstNormal = starts.findIndex((s) => s.freq === 1000);
+      assert(firstNormal > 0, `[N=${N}] a real 'normal' click eventually schedules`);
+      const accentsBefore = starts.slice(0, firstNormal).filter((s) => s.freq === 2000).length;
+      assert(accentsBefore - 1 === N,
+        `[N=${N}] exactly ${N} count-in bars before the real meter (got ${accentsBefore - 1})`);
+    }
+  });
+
   suite('metronome: fake-clock scheduler — past-due guard on a stall (Fix 1)', () => {
     const { ctx, time, starts } = makeFakeAudioContext();
     const m = new Metronome({ audioContext: ctx });

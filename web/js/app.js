@@ -331,7 +331,10 @@ function metLoop() {
   metView.setTransport(phase, beat, tr.barCount);
 
   // Count-in → real bar swap (staged; applies at the next bar boundary).
-  if (metCountingIn && tr.barCount >= metCountInTarget) {
+  // Stage the real bar ONE boundary early: setBar while running applies at the NEXT bar
+  // boundary (staged _pendingBar). Observing barCount === target would then swap only at
+  // target+1, playing an extra count-in bar. -1 makes exactly `target` count-in bars.
+  if (metCountingIn && tr.barCount >= metCountInTarget - 1) {
     metCountingIn = false;
     metronome.setBar(state.metBar);
   }
@@ -380,6 +383,7 @@ function setUiMode(mode) {
     // Return to the tuner: STOP the metronome (modes are exclusive), stop its loop,
     // and restart the mic only if it had been running.
     if (metronome) metronome.stop();
+    metCountingIn = false;                 // don't leave a half-finished count-in armed
     metView.setRunning(false);
     cancelAnimationFrame(metRafId);
     if (state.wasRunning) startMic();

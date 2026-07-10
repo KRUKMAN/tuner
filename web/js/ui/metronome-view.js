@@ -159,6 +159,15 @@ export class MetronomeView {
     btn.addEventListener('pointerup', stop);
     btn.addEventListener('pointerleave', stop);
     btn.addEventListener('pointercancel', stop);
+    // Keyboard: the buttons are focusable, so Enter/Space must do a single step. We handle
+    // keydown directly (no click listener), so a keyboard-synthesized click fires nothing
+    // and there is no double-step with the pointer path.
+    btn.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+        e.preventDefault();
+        this._emitBpm(this._bpm + dir);
+      }
+    });
   }
 
   _dragWire() {
@@ -263,9 +272,13 @@ export class MetronomeView {
   setTransport(phase, beatIndex, barCount) {
     const w = this.laneEl.clientWidth;
     this.playhead.style.transform = `translateX(${Math.max(0, Math.min(w, phase * w))}px)`;
-    if (beatIndex !== this._activeBeat) this._setActiveBeat(beatIndex);
-    const total = this._bar.length || 1;
-    this.barsEl.textContent = `bar ${barCount + 1} · beat ${((beatIndex % total) + 1)}`;
+    // The counter label only changes on a beat boundary — don't rebuild the string and
+    // rewrite the text node ~60x/sec; only when the beat actually advances.
+    if (beatIndex !== this._activeBeat) {
+      this._setActiveBeat(beatIndex);
+      const total = this._bar.length || 1;
+      this.barsEl.textContent = `bar ${barCount + 1} · beat ${((beatIndex % total) + 1)}`;
+    }
   }
 
   /** Discrete per-beat brighten (also the reduced-motion cue). @param {number} index */
