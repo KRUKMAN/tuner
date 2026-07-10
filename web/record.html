@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0d10">
+<title>Tuner mic diagnostic</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:#0b0d10; color:#eef1f5; font:15px/1.5 -apple-system,system-ui,sans-serif;
+         padding:24px 16px calc(24px + env(safe-area-inset-bottom)); }
+  main { max-width:560px; margin:0 auto; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  p.sub { color:#8b93a1; margin:0 0 20px; font-size:13px; }
+  button { border:0; border-radius:12px; font:600 15px system-ui; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+  .primary { background:#4cc2f2; color:#08131a; padding:14px 20px; width:100%; }
+  #settings { margin:16px 0; padding:14px; border-radius:12px; background:#12151b; border:1px solid #232833;
+              font:13px/1.7 ui-monospace,SFMono-Regular,monospace; white-space:pre-wrap; }
+  #settings b { color:#4cc2f2; }
+  .bad { color:#f2545c; font-weight:700; }
+  .good { color:#34d399; font-weight:700; }
+  .take { border:1px solid #232833; border-radius:12px; padding:12px 14px; margin-bottom:10px; background:#12151b; }
+  .take.done { border-color:#34d399; }
+  .take h2 { font-size:14px; margin:0 0 2px; }
+  .take p { margin:0 0 10px; color:#8b93a1; font-size:12px; }
+  .row { display:flex; align-items:center; gap:12px; }
+  .rec { background:#232833; color:#eef1f5; padding:9px 16px; }
+  .rec.on { background:#f2545c; color:#fff; }
+  .meter { flex:1; height:10px; border-radius:5px; background:#232833; overflow:hidden; }
+  .meter > i { display:block; height:100%; width:0; background:#34d399; }
+  .meter > i.clip { background:#f2545c; }
+  .t { font:600 13px ui-monospace,monospace; color:#8b93a1; min-width:46px; text-align:right; }
+  #msg { margin:14px 0; font:13px ui-monospace,monospace; min-height:20px; }
+  a { color:#4cc2f2; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Tuner mic diagnostic</h1>
+  <p class="sub">Records exactly what this device's microphone delivers to the tuner (raw PCM, the tuner's own settings). Tap <b>Enable microphone</b>, read the settings box, then record a couple of takes and send me the <code>.wav</code> files.</p>
+
+  <button class="primary" id="init">Enable microphone</button>
+  <div id="settings" hidden></div>
+  <div id="msg"></div>
+  <div id="takes" hidden></div>
+</main>
+
+<script>
+const TAKES = [
+  { id: 'guitar-lowE',  name: '1. Guitar — low E string',  hint: 'Play your low E (thickest) string once and let it ring ~6s.' },
+  { id: 'guitar-strum', name: '2. Guitar — a few strings', hint: 'Play a few open strings one at a time, low to high.' },
+  { id: 'guitar-quiet', name: '3. Guitar — quiet pluck',   hint: 'Play one note softly (this is where it fails most).' },
+  { id: 'voice',        name: '4. Loud voice (the control)', hint: 'Say "aaah" loudly and steadily — the thing that DOES work.' },
+];
+
+let ctx=null, stream=null, source=null, proc=null, sink=null, rec=null, track=null;
+const $ = (s)=>document.querySelector(s);
+const msg = (t,cls)=>{ $('#msg').innerHTML = cls?`<span class="${cls}">${t}</span>`:t; };
+
+$('#init').onclick = async () => {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation:false, noiseSuppression:false, autoGainControl:false, channelCount:1 },
+    });
+  } catch (e) { msg(`Microphone blocked: ${e.name} — ${e.message}. Allow it and reload.`, 'bad'); return; }
+
+  ctx = new (window.AudioContext || window.webkitAudioContext)();
+  if (ctx.state === 'suspended') await ctx.resume();
+  source = ctx.createMediaStreamSource(stream);
+  // ScriptProcessor is deprecated but works on iOS Safari and gives us raw PCM frames.
+  proc = ctx.createScriptProcessor(4096, 1, 1);
+  sink = ctx.createGain(); sink.gain.value = 0;
+  source.connect(proc); proc.connect(sink); sink.connect(ctx.destination);
+
+  track = stream.getAudioTracks()[0];
+  const s = track.getSettings ? track.getSettings() : {};
+  const flag = (v) => v === true ? '<span class="bad">ON (bad — we asked for off!)</span>'
+                     : v === false ? '<span class="good">off (good)</span>' : String(v);
+  $('#settings').hidden = false;
+  $('#settings').innerHTML =
+    `<b>What iOS actually applied</b>\n` +
+    `device:            ${track.label || '(unnamed)'}\n` +
+    `AudioContext rate: ${ctx.sampleRate} Hz\n` +
+    `track sampleRate:  ${s.sampleRate ?? '(not reported)'}\n` +
+    `channelCount:      ${s.channelCount ?? '(n/a)'}\n` +
+    `echoCancellation:  ${flag(s.echoCancellation)}\n` +
+    `noiseSuppression:  ${flag(s.noiseSuppression)}\n` +
+    `autoGainControl:   ${flag(s.autoGainControl)}\n` +
+    (s.voiceIsolation !== undefined ? `voiceIsolation:    ${flag(s.voiceIsolation)}\n` : '');
+  msg('If any of the three above is <span class="bad">ON</span>, that is very likely the bug — iOS is voice-processing your guitar. Screenshot this box for me.', '');
+
+  proc.onaudioprocess = (e) => {
+    const inb = e.inputBuffer.getChannelData(0);
+    let peak=0; for (let i=0;i<inb.length;i++){ const a=Math.abs(inb[i]); if(a>peak)peak=a; }
+    if (rec) {
+      rec.chunks.push(new Float32Array(inb)); rec.frames += inb.length;
+      const m = $(`#m-${rec.id} > i`); if (m){ m.style.width = Math.min(100,peak*140)+'%'; m.classList.toggle('clip',peak>0.98); }
+      const tEl = $(`#t-${rec.id}`); if (tEl) tEl.textContent = (rec.frames/ctx.sampleRate).toFixed(1)+'s';
+    }
+  };
+  $('#init').disabled = true; $('#init').textContent = 'Microphone on';
+  renderTakes();
+};
+
+function renderTakes(){
+  const host = $('#takes'); host.hidden=false;
+  host.innerHTML = TAKES.map(t=>`
+    <div class="take" id="take-${t.id}">
+      <h2>${t.name}</h2><p>${t.hint}</p>
+      <div class="row">
+        <button class="rec" id="b-${t.id}" data-id="${t.id}">Record</button>
+        <div class="meter" id="m-${t.id}"><i></i></div>
+        <div class="t" id="t-${t.id}">0.0s</div>
+      </div>
+    </div>`).join('');
+  host.querySelectorAll('button').forEach(b=> b.onclick=()=>toggle(b.dataset.id));
+}
+
+function toggle(id){
+  const btn = $(`#b-${id}`);
+  if (rec && rec.id===id){
+    const r=rec; rec=null; btn.textContent='Record'; btn.classList.remove('on');
+    TAKES.forEach(t=> $(`#b-${t.id}`).disabled=false);
+    if (r.frames < ctx.sampleRate*0.4){ msg('Too short — not saved.', 'bad'); return; }
+    download(toWav(concat(r.chunks,r.frames), ctx.sampleRate), `take-${id}-${Math.round(ctx.sampleRate)}hz.wav`);
+    $(`#take-${id}`).classList.add('done');
+    msg(`Saved take-${id}-${Math.round(ctx.sampleRate)}hz.wav (${(r.frames/ctx.sampleRate).toFixed(1)}s). On iPhone it goes to Files / Downloads — AirDrop it to your Mac.`, 'good');
+    return;
+  }
+  if (rec) return;
+  rec = { id, chunks:[], frames:0 };
+  btn.textContent='Stop'; btn.classList.add('on');
+  TAKES.forEach(t=>{ if(t.id!==id) $(`#b-${t.id}`).disabled=true; });
+  msg(`Recording "${id}"… play now, then Stop.`, '');
+}
+
+function concat(chunks,total){ const out=new Float32Array(total); let o=0; for(const c of chunks){ out.set(c,o); o+=c.length; } return out; }
+function toWav(samples,rate){
+  const n=samples.length, buf=new ArrayBuffer(44+n*2), v=new DataView(buf);
+  const str=(o,s)=>{ for(let i=0;i<s.length;i++) v.setUint8(o+i,s.charCodeAt(i)); };
+  str(0,'RIFF'); v.setUint32(4,36+n*2,true); str(8,'WAVE'); str(12,'fmt '); v.setUint32(16,16,true);
+  v.setUint16(20,1,true); v.setUint16(22,1,true); v.setUint32(24,rate,true); v.setUint32(28,rate*2,true);
+  v.setUint16(32,2,true); v.setUint16(34,16,true); str(36,'data'); v.setUint32(40,n*2,true);
+  for(let i=0;i<n;i++){ const x=Math.max(-1,Math.min(1,samples[i])); v.setInt16(44+i*2, x<0?x*0x8000:x*0x7fff, true); }
+  return new Blob([buf],{type:'audio/wav'});
+}
+function download(blob,name){
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),8000);
+}
+</script>
+</body>
+</html>
